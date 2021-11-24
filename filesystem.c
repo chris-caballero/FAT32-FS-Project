@@ -5,16 +5,18 @@
 #include <dirent.h>
 #include <fcntl.h>
 
+#include "FAT32.h"
 
-typedef struct {
-    unsigned short BPB_BytesPerSec;
-    unsigned char BPB_SecPerCluster;
-    unsigned short BPB_ReservedSecCnt;            // This holds the first FAT sector
-    unsigned char BPB_NumFATs;
-    unsigned int BPB_FATsize32;
-    unsigned int BPB_RootCluster;
-    unsigned int BPB_TotalSec32;
-} __attribute__((packed)) BPB_Info;
+
+// typedef struct {
+//     unsigned short BPB_BytesPerSec;
+//     unsigned char BPB_SecPerCluster;
+//     unsigned short BPB_ReservedSecCnt;            // This holds the first FAT sector
+//     unsigned char BPB_NumFATs;
+//     unsigned int BPB_FATsize32;
+//     unsigned int BPB_RootCluster;
+//     unsigned int BPB_TotalSec32;
+// } __attribute__((packed)) BPB_Info;
 
 struct DIRENTRY {
     unsigned char DIR_Name[11];             // offset: 0
@@ -35,7 +37,6 @@ struct DIRENTRY {
 FILE *  img_file;
 BPB_Info BPB;
 // FSInfo FSI;
-// Environment ENV;
 
 
 char *get_input(void);
@@ -53,11 +54,36 @@ int main () {
     char *filename = "./fat32.img";
 
     img_file = fopen(filename, "rb+");
+    fread(&BPB, sizeof(BPB), 1, img_file);
 
     print_info(0);
 
+    return 0;
+}
 
-    /*
+int print_info(int offset) {
+
+    printf("Bytes per Sector: %d\n", BPB.BPB_BytsPerSec);
+	printf("Sectors per Cluster: %d\n", BPB.BPB_SecPerClus);
+    printf("Reserved Sector Count: %d\n", BPB.BPB_RsvdSecCnt);
+	printf("Number of FATs: %d\n", BPB.BPB_NumFATs);
+    printf("Total Sectors: %d\n", BPB.BPB_TotSec32);  
+    printf("FAT Size: %d\n", BPB.BPB_FATSz32);
+    printf("Root Cluster: %d\n", BPB.BPB_RootClus);
+
+    return 0;
+
+}
+
+
+
+
+
+
+
+
+
+/*
     while(1) {
         printf("$ ");
         command = get_input();
@@ -101,75 +127,32 @@ int main () {
         }
 
     }
-    */
-    
-    return 0;
-}
-
-int print_info(int offset) {
-
-    fseek(img_file, 11, SEEK_SET);
-    fread(&BPB.BPB_BytesPerSec, 2, 1, img_file);
-    fread(&BPB.BPB_SecPerCluster, 1, 1, img_file);
-    fread(&BPB.BPB_ReservedSecCnt, 2, 1, img_file);
-    fread(&BPB.BPB_NumFATs, 1, 1, img_file);
-
-    fseek(img_file, 32, SEEK_SET);
-    fread(&BPB.BPB_TotalSec32, 4, 1, img_file);
-    fread(&BPB.BPB_FATsize32, 4, 1, img_file);
-    
-    fseek(img_file, 4, SEEK_CUR);
-    fread(&BPB.BPB_RootCluster, 4, 1, img_file);
 
 
+    char *get_input(void) {
+        char *buffer = NULL;
+        int bufsize = 0;
 
-    printf("Bytes per Sector: %d\n", BPB.BPB_BytesPerSec);
-	printf("Sectors per Cluster: %d\n", BPB.BPB_SecPerCluster);
-    printf("Reserved Sector Count: %d\n", BPB.BPB_ReservedSecCnt);
-	printf("Number of FATs: %d\n", BPB.BPB_NumFATs);
-    printf("Total Sectors: %d\n", BPB.BPB_TotalSec32);  
-    printf("FAT Size: %d\n", BPB.BPB_FATsize32);
-    printf("Root Cluster: %d\n", BPB.BPB_RootCluster);
+        char line[5];
+        while (fgets(line, 5, stdin) != NULL) {
+            int addby = 0;
+            char *newln = strchr(line, '\n');
+            if (newln != NULL)
+                addby = newln - line;
+            else
+                addby = 5 - 1;
 
-    return 0;
+            buffer = (char *) realloc(buffer, bufsize + addby);
+            memcpy(&buffer[bufsize], line, addby);
+            bufsize += addby;
 
-}
+            if (newln != NULL)
+                break;
+        }
 
+        buffer = (char *) realloc(buffer, bufsize + 1);
+        buffer[bufsize] = 0;
 
-
-
-
-
-
-
-
-
-
-
-
-char *get_input(void) {
-	char *buffer = NULL;
-	int bufsize = 0;
-
-	char line[5];
-	while (fgets(line, 5, stdin) != NULL) {
-		int addby = 0;
-		char *newln = strchr(line, '\n');
-		if (newln != NULL)
-			addby = newln - line;
-		else
-			addby = 5 - 1;
-
-		buffer = (char *) realloc(buffer, bufsize + addby);
-		memcpy(&buffer[bufsize], line, addby);
-		bufsize += addby;
-
-		if (newln != NULL)
-			break;
-	}
-
-	buffer = (char *) realloc(buffer, bufsize + 1);
-	buffer[bufsize] = 0;
-
-	return buffer;
-}
+        return buffer;
+    }
+*/
