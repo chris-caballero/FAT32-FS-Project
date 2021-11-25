@@ -35,7 +35,4 @@ typedef struct {
 
 } __attribute__((packed)) BPB_Info;
 
-int loadBPB(char *filename);
-int print_info(int offset);
-
 #endif

@@ -7,7 +7,7 @@
 
 #include "FAT32.h"
 
-struct DIRENTRY {
+typedef struct {
     unsigned char DIR_Name[11];             // offset: 0
     unsigned char DIR_Attributes;           // offset: 11
     unsigned char DIR_NTRes;                // offset: 12
@@ -19,35 +19,65 @@ struct DIRENTRY {
     unsigned short DIR_WriteTime;           // offset: 22
     unsigned short DIR_WriteDate;           // offset: 24
     unsigned short DIR_FirstClusterLO;      // offset: 26
-    unsigned short DIR_FileSize;            // offset: 28
-} __attribute__((packed));
+    unsigned int DIR_FileSize;            // offset: 28
+} __attribute__((packed)) DIRENTRY;
 
 
 FILE *  img_file;
 BPB_Info BPB;
+
+int FirstDataSector;
+int FirstFATSector;
 // FSInfo FSI;
+unsigned char ATTR_READ_ONLY = 0x01;
+unsigned char ATTR_HIDDEN = 0x02;
+unsigned char ATTR_SYSTEM = 0x04;
+unsigned char ATTR_VOLUME_ID = 0x08;
+unsigned char ATTR_DIRECTORY = 0x10;
+unsigned char ATTR_ARCHIVE = 0x20;
+
+unsigned char ATTR_LONG_NAME;
+
 
 
 char* UserInput[5]; //Longest Command is 4 long, so this will give us just enough space for 4 args and End line
  
 
-void RunProgram();
+void RunProgram(void);
 char* DynStrPushBack(char* dest, char c);
 void GetUserInput(void);
+
+int loadBPB(char *filename);
+int print_info(int offset);
+
+int get_first_sector(int cluster_num);
+
+void ls(int curr_cluster);
+int get_next_cluster(int curr_cluster);
+int is_last_cluster(int cluster);
+
 int open_file(char* filename, char* mode);
-int getFileSize(void);
+int get_file_size(char *filename);
+
+
+void ls_dirname(int curr_cluster, char *dirname);
 
 int main() 
 {
     char* filename = "./fat32.img";
     loadBPB(filename);
 
+    FirstDataSector = BPB.BPB_RsvdSecCnt + BPB.BPB_NumFATs * BPB.BPB_FATSz32;
+    FirstFATSector = BPB.BPB_RsvdSecCnt;
+
+    ATTR_LONG_NAME = ATTR_READ_ONLY | ATTR_HIDDEN | ATTR_SYSTEM | ATTR_VOLUME_ID;
+
     RunProgram();
 
     return 0;
 }
 
-void RunProgram() {
+void RunProgram(void) {
     while (1) {
         printf("$ ");
         GetUserInput();
@@ -62,10 +92,16 @@ void RunProgram() {
             print_info(0);
         }
         else if (!strcmp(command, "size")) {
-            printf("The size of the file is %d bytes\n", getFileSize());
+            //printf("The size of the file is %d bytes\n", get_file_size(filename));
         }   
         else if (!strcmp(command, "ls")) {
-
+            if(!strcmp(UserInput[1], "")) {
+                ls(BPB.BPB_RootClus);
+            } else {
+                char *dirname = UserInput[1];
+                ls_dirname(BPB.BPB_RootClus, dirname);          
+            }
+            
         }
         else if (!strcmp(command, "cd")) {
 
@@ -173,7 +209,7 @@ void GetUserInput(void)
     while (j < 5) {
         free(UserInput[j]);
         UserInput[j] = calloc(10, sizeof(char));
-        strcpy(UserInput[j], ". . . . .");
+        strcpy(UserInput[j], "");
         j++;
     }
 }
@@ -198,7 +234,82 @@ int loadBPB(char *filename) {
     return 0;
 }
 
-int getFileSize(void) {
+int is_last_cluster(int cluster) {
+    if(cluster == 0xFFFFFFFF || cluster == 0x0FFFFFF8 || cluster == 0x0FFFFFFE) {
+        return 1;
+    }
+    return 0;
+}
+
+int get_next_cluster(int curr_cluster) {
+    int next_cluster = FirstFATSector * BPB.BPB_BytsPerSec + curr_cluster * 4;
+
+    fseek(img_file, next_cluster, SEEK_SET);
+    fread(&next_cluster, 4, 1, img_file);
+
+    if(next_cluster == 0xFFFFFFFF || next_cluster == 0x0FFFFFF8 || next_cluster == 0x0FFFFFFE) {
+        return -1;
+    }
+    return next_cluster;
+}
+
+void ls(int curr_cluster) {
+    DIRENTRY curr_dir;
+    int i, offset;
+
+    while(!is_last_cluster(curr_cluster)) {
+        for(i = 0; i*sizeof(curr_dir) < BPB.BPB_BytsPerSec; i++) {
+            offset = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec + i*sizeof(curr_dir);
+            fseek(img_file, offset, SEEK_SET);
+            fread(&curr_dir, sizeof(curr_dir), 1, img_file);
+
+            if(curr_dir.DIR_Name[0] != '\0' && !(curr_dir.DIR_Attributes & ATTR_LONG_NAME)) {
+                for(int j = 0; j < 11; j++) {
+                    if(curr_dir.DIR_Name[j] == ' ') {
+                        break;
+                    }
+                    printf("%c", curr_dir.DIR_Name[j]);
+                }
+                printf(" ");
+            }
+        }
+        curr_cluster = get_next_cluster(curr_cluster);
+        if(curr_dir.DIR_Name[0] != '\0' && !(curr_dir.DIR_Attributes & ATTR_LONG_NAME)) {
+            printf("\n");
+        }
+    }
+    printf("\n");
+}
+
+void ls_dirname(int curr_cluster, char * dirname) {
+    DIRENTRY curr_dir;
+    int i, j, offset;
+
+    while(!is_last_cluster(curr_cluster)) {
+        for(i = 0; i*sizeof(curr_dir) < BPB.BPB_BytsPerSec; i++) {
+            offset = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec + i*sizeof(curr_dir);
+            fseek(img_file, offset, SEEK_SET);
+            fread(&curr_dir, sizeof(curr_dir), 1, img_file);
+
+            if((curr_dir.DIR_Attributes & ATTR_DIRECTORY) && curr_dir.DIR_Name[0] != '\0' && !(curr_dir.DIR_Attributes & ATTR_LONG_NAME)) {
+                if(strstr((char *) curr_dir.DIR_Name, dirname) != NULL) {
+                    ls(curr_dir.DIR_FirstClusterHI * 0x100 + curr_dir.DIR_FirstClusterLO);
+                    return;
+                }
+            }
+        }
+        curr_cluster = get_next_cluster(curr_cluster);
+    }
+    printf("Error: directory %s not found\n", dirname);
+}
+
+int get_first_sector(int cluster_num) {
+    int offset = (cluster_num - 2) * BPB.BPB_SecPerClus;
+    return FirstDataSector + offset;
+}
+
+
+int get_file_size(char *filename) {
     fseek(img_file, 0L, SEEK_END);
     int size = ftell(img_file);
 
@@ -211,3 +322,30 @@ int getFileSize(void) {
 int open_file(char* filename, char* mode) {
     return 0;
 }
+
+
+
+
+/*
+    DIRENTRY curr_dir;
+    int i, j, offset;
+
+    while(!is_last_cluster(curr_cluster)) {
+        for(i = 0; i < BPB.BPB_BytsPerSec / sizeof(curr_dir); i++) {
+            offset = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec + i*sizeof(curr_dir);
+            fseek(img_file, offset, SEEK_SET);
+            fread(&curr_dir, sizeof(curr_dir), 1, img_file);
+
+            if(curr_dir.DIR_Name[0] != '\0') {
+                for(j = 0; j < 11; j++) {
+                    printf("%c", curr_dir.DIR_Name[j]);
+                }
+                printf(" ");
+            }
+        }
+        curr_cluster = get_next_cluster(curr_cluster);
+        break;
+    }
+    printf("\n");
+
+    */
