@@ -1,3 +1,5 @@
+#ifndef FAT32_H
+#define FAT32_H
 // This file shall contain the data struct for a Fat32 reservedRegion
 typedef struct {
     //BPB
@@ -33,3 +35,7 @@ typedef struct {
 
 } __attribute__((packed)) BPB_Info;
 
+int loadBPB(char *filename);
+int print_info(int offset);
+
+#endif

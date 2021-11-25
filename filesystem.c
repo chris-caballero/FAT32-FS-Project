@@ -7,17 +7,6 @@
 
 #include "FAT32.h"
 
-
-// typedef struct {
-//     unsigned short BPB_BytesPerSec;
-//     unsigned char BPB_SecPerCluster;
-//     unsigned short BPB_ReservedSecCnt;            // This holds the first FAT sector
-//     unsigned char BPB_NumFATs;
-//     unsigned int BPB_FATsize32;
-//     unsigned int BPB_RootCluster;
-//     unsigned int BPB_TotalSec32;
-// } __attribute__((packed)) BPB_Info;
-
 struct DIRENTRY {
     unsigned char DIR_Name[11];             // offset: 0
     unsigned char DIR_Attributes;           // offset: 11
@@ -41,6 +30,85 @@ BPB_Info BPB;
 
 char* UserInput[5]; //Longest Command is 4 long, so this will give us just enough space for 4 args and End line
  
+
+void RunProgram();
+char* DynStrPushBack(char* dest, char c);
+void GetUserInput(void);
+int open_file(char* filename, char* mode);
+int getFileSize(void);
+
+int main() 
+{
+    char* filename = "./fat32.img";
+    loadBPB(filename);
+
+    RunProgram();
+
+    return 0;
+}
+
+void RunProgram() {
+    while (1) {
+        printf("$ ");
+        GetUserInput();
+
+        char *command = UserInput[0];
+
+        if (!strcmp(command, "exit")) {
+            //release resources 
+            break;
+        }
+        else if (!strcmp(command, "info")) {
+            print_info(0);
+        }
+        else if (!strcmp(command, "size")) {
+            printf("The size of the file is %d bytes\n", getFileSize());
+        }   
+        else if (!strcmp(command, "ls")) {
+
+        }
+        else if (!strcmp(command, "cd")) {
+
+        }
+        else if (!strcmp(command, "creat")) {
+
+        }
+        else if (!strcmp(command, "mkdir")) {
+
+        }
+        else if (!strcmp(command, "mv")) {
+
+        }
+        else if (!strcmp(command, "open")) {
+            // if (openFile() == -1) {
+            //     printf("Error");
+            // }
+
+        }
+        else if (!strcmp(command, "close")) {
+
+        }
+        else if (!strcmp(command, "lseek")) {
+
+        }
+        else if (!strcmp(command, "read")) {
+
+        }
+        else if (!strcmp(command, "write")) {
+
+        }
+        else if (!strcmp(command, "rm")) {
+
+        }
+        else if (!strcmp(command, "cp")) {
+
+        }
+        else if (!strcmp(command, "rmdir")) {
+
+        }
+
+    }
+}
 
 char* DynStrPushBack(char* dest, char c) //TODO: Move to a seperate file with other commonly used functions
 {
@@ -110,11 +178,6 @@ void GetUserInput(void)
     }
 }
 
-int open_file(char* filename, char* mode) {
-    return 0;
-}
-int print_info(int offset);
-
 int print_info(int offset) {
 
     printf("Bytes per Sector: %d\n", BPB.BPB_BytsPerSec);
@@ -129,81 +192,22 @@ int print_info(int offset) {
 
 }
 
-
-void RunProgram()
-{
-    while (1) {
-        printf("$ ");
-        GetUserInput();
-
-        command = UserInput[0];
-
-        if (command == "exit") {
-            //release resources 
-            break;
-        }
-        else if (command == "info") {
-
-        }
-        else if (command == "size") {
-
-        }
-        else if (command == "ls") {
-
-        }
-        else if (command == "cd") {
-
-        }
-        else if (command == "creat") {
-
-        }
-        else if (command == "mkdir") {
-
-        }
-        else if (command == "mv") {
-
-        }
-        else if (command == "open") {
-            if (openFile() == -1) {
-                printf("Error");
-            }
-
-        }
-        else if (command == "close") {
-
-        }
-        else if (command == "lseek") {
-
-        }
-        else if (command == "read") {
-
-        }
-        else if (command == "write") {
-
-        }
-        else if (command == "rm") {
-
-        }
-        else if (command == "cp") {
-
-        }
-        else if (command == "rmdir") {
-
-        }
-
-    }
-}
-
-int main() 
-{
-    char* filename = "./fat32.img";
-
+int loadBPB(char *filename) {
     img_file = fopen(filename, "rb+");
     fread(&BPB, sizeof(BPB), 1, img_file);
+    return 0;
+}
 
-    print_info(0);
+int getFileSize(void) {
+    fseek(img_file, 0L, SEEK_END);
+    int size = ftell(img_file);
 
-    RunProgram();
+    rewind(img_file);
+    return size;
+}
 
+
+
+int open_file(char* filename, char* mode) {
     return 0;
 }
