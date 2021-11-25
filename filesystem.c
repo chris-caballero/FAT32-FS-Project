@@ -52,15 +52,14 @@ int print_info(int offset);
 
 int get_first_sector(int cluster_num);
 
-void ls(int curr_cluster);
 int get_next_cluster(int curr_cluster);
 int is_last_cluster(int cluster);
 
 int open_file(char* filename, char* mode);
 int get_file_size(char *filename);
 
-
-void ls_dirname(int curr_cluster, char *dirname);
+void ls(int curr_cluster, char *dirname);
+int find_dirname_cluster(int curr_cluster, char *dirname);
 
 int main() 
 {
@@ -95,13 +94,8 @@ void RunProgram(void) {
             //printf("The size of the file is %d bytes\n", get_file_size(filename));
         }   
         else if (!strcmp(command, "ls")) {
-            if(!strcmp(UserInput[1], "")) {
-                ls(BPB.BPB_RootClus);
-            } else {
-                char *dirname = UserInput[1];
-                ls_dirname(BPB.BPB_RootClus, dirname);          
-            }
-            
+            char *dirname = UserInput[1];
+            ls(BPB.BPB_RootClus, dirname);  
         }
         else if (!strcmp(command, "cd")) {
 
@@ -253,9 +247,15 @@ int get_next_cluster(int curr_cluster) {
     return next_cluster;
 }
 
-void ls(int curr_cluster) {
+void ls(int curr_cluster, char *dirname) {
     DIRENTRY curr_dir;
     int i, offset;
+
+    if(strcmp(dirname, "") == 0) {
+        curr_cluster = BPB.BPB_RootClus;
+    } else if((curr_cluster = find_dirname_cluster(BPB.BPB_RootClus, dirname)) == -1) {
+        return;
+    }
 
     while(!is_last_cluster(curr_cluster)) {
         for(i = 0; i*sizeof(curr_dir) < BPB.BPB_BytsPerSec; i++) {
@@ -281,7 +281,7 @@ void ls(int curr_cluster) {
     printf("\n");
 }
 
-void ls_dirname(int curr_cluster, char * dirname) {
+int find_dirname_cluster(int curr_cluster, char * dirname) {
     DIRENTRY curr_dir;
     int i, j, offset;
 
@@ -293,14 +293,14 @@ void ls_dirname(int curr_cluster, char * dirname) {
 
             if((curr_dir.DIR_Attributes & ATTR_DIRECTORY) && curr_dir.DIR_Name[0] != '\0' && !(curr_dir.DIR_Attributes & ATTR_LONG_NAME)) {
                 if(strstr((char *) curr_dir.DIR_Name, dirname) != NULL) {
-                    ls(curr_dir.DIR_FirstClusterHI * 0x100 + curr_dir.DIR_FirstClusterLO);
-                    return;
+                    return curr_dir.DIR_FirstClusterHI * 0x100 + curr_dir.DIR_FirstClusterLO;
                 }
             }
         }
         curr_cluster = get_next_cluster(curr_cluster);
     }
     printf("Error: directory %s not found\n", dirname);
+    return -1;
 }
 
 int get_first_sector(int cluster_num) {
