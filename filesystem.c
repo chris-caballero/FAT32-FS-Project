@@ -39,27 +39,81 @@ BPB_Info BPB;
 // FSInfo FSI;
 
 
-char *get_input(void);
+char* UserInput[5]; //Longest Command is 4 long, so this will give us just enough space for 4 args and End line
+ 
 
+char* DynStrPushBack(char* dest, char c) //TODO: Move to a seperate file with other commonly used functions
+{
+    size_t total_len = strlen(dest) + 2;
+    char* new_str = (char*)calloc(total_len, sizeof(char));
+    strcpy(new_str, dest);
+    new_str[total_len - 2] = c;
+    new_str[total_len - 1] = '\0';
+    free(dest);
+    return new_str;
+}
+
+void GetUserInput(void) 
+{
+    char temp;
+    int i = 0;
+    while (i < 5) //Clear Array
+    {
+        if (UserInput[i] != NULL) {
+            free(UserInput[i]);
+        }
+        UserInput[i] = (char*)calloc(1, sizeof(char));
+        UserInput[i][0] = '\0';
+        i++;
+    }
+    unsigned int userInputIndex = 0;
+    do {
+        temp = fgetc(stdin); //fgetc grabs 1 char at a time and casts it to an int.
+        
+        if (userInputIndex == 4)
+        {
+            if (temp != '\"')
+            {
+                printf("Error: Expected quotes around last argument");
+            }
+            
+            temp = fgetc(stdin);
+            while (temp != '\"') //if slash, append to the UserInput index, then keep grabbing
+            {
+                UserInput[userInputIndex] = DynStrPushBack(UserInput[userInputIndex], temp);
+                temp = fgetc(stdin);
+            }
+            //If not end, grab keep grabbing more chars
+            while (temp != '\n' && temp != '\0')
+            {
+                temp = fgetc(stdin);
+            }
+        }
+
+        else
+        {
+            while (temp != ' ' && temp != '\n' && temp != '\0') //If not space, new line or end, Append.
+            {
+                UserInput[userInputIndex] = DynStrPushBack(UserInput[userInputIndex], temp);
+                temp = fgetc(stdin);
+            }
+        }
+        userInputIndex++;
+    } while (temp != '\n' && temp != '\0' && userInputIndex < 5);
+
+    int j = userInputIndex;
+    while (j < 5) {
+        free(UserInput[j]);
+        UserInput[j] = calloc(10, sizeof(char));
+        strcpy(UserInput[j], ". . . . .");
+        j++;
+    }
+}
 
 int open_file(char* filename, char* mode) {
     return 0;
 }
 int print_info(int offset);
-
-int main () {
-
-
-    char *command; 
-    char *filename = "./fat32.img";
-
-    img_file = fopen(filename, "rb+");
-    fread(&BPB, sizeof(BPB), 1, img_file);
-
-    print_info(0);
-
-    return 0;
-}
 
 int print_info(int offset) {
 
@@ -76,83 +130,80 @@ int print_info(int offset) {
 }
 
 
-
-
-
-
-
-
-
-/*
-    while(1) {
+void RunProgram()
+{
+    while (1) {
         printf("$ ");
-        command = get_input();
+        GetUserInput();
 
-        if(command == "exit") {
+        command = UserInput[0];
+
+        if (command == "exit") {
             //release resources 
             break;
-        } else if(command == "info") {
+        }
+        else if (command == "info") {
 
-        } else if(command == "size") {
+        }
+        else if (command == "size") {
 
-        } else if(command == "ls") {
+        }
+        else if (command == "ls") {
 
-        } else if(command == "cd") {
+        }
+        else if (command == "cd") {
 
-        } else if(command == "creat") {
+        }
+        else if (command == "creat") {
 
-        } else if(command == "mkdir") {
+        }
+        else if (command == "mkdir") {
 
-        } else if(command == "mv") {
+        }
+        else if (command == "mv") {
 
-        } else if(command == "open") {
-            if(openFile() == -1) {
+        }
+        else if (command == "open") {
+            if (openFile() == -1) {
                 printf("Error");
             }
 
-        } else if(command == "close") {
+        }
+        else if (command == "close") {
 
-        } else if(command == "lseek") {
+        }
+        else if (command == "lseek") {
 
-        } else if(command == "read") {
+        }
+        else if (command == "read") {
 
-        } else if(command == "write") {
+        }
+        else if (command == "write") {
 
-        } else if(command == "rm") {
+        }
+        else if (command == "rm") {
 
-        } else if(command == "cp") {
+        }
+        else if (command == "cp") {
 
-        } else if(command == "rmdir") {
+        }
+        else if (command == "rmdir") {
 
         }
 
     }
+}
 
+int main() 
+{
+    char* filename = "./fat32.img";
 
-    char *get_input(void) {
-        char *buffer = NULL;
-        int bufsize = 0;
+    img_file = fopen(filename, "rb+");
+    fread(&BPB, sizeof(BPB), 1, img_file);
 
-        char line[5];
-        while (fgets(line, 5, stdin) != NULL) {
-            int addby = 0;
-            char *newln = strchr(line, '\n');
-            if (newln != NULL)
-                addby = newln - line;
-            else
-                addby = 5 - 1;
+    print_info(0);
 
-            buffer = (char *) realloc(buffer, bufsize + addby);
-            memcpy(&buffer[bufsize], line, addby);
-            bufsize += addby;
+    RunProgram();
 
-            if (newln != NULL)
-                break;
-        }
-
-        buffer = (char *) realloc(buffer, bufsize + 1);
-        buffer[bufsize] = 0;
-
-        return buffer;
-    }
-*/
+    return 0;
+}
