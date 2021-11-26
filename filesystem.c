@@ -42,30 +42,28 @@ unsigned char ATTR_LONG_NAME;
 
 char* UserInput[5]; //Longest Command is 4 long, so this will give us just enough space for 4 args and End line
  
-
+//Shell Commands
 void RunProgram(void);
 char* DynStrPushBack(char* dest, char c);
 void GetUserInput(void);
 
+//Builtins
 int loadBPB(char *filename);
 int print_info(int offset);
+void ls(int curr_cluster, char* dirname);
 
+//Cluster Management
 int get_first_sector(int cluster_num);
-
 int get_next_cluster(int curr_cluster);
 int is_last_cluster(int cluster);
-
 int open_file(char* filename, char* mode);
 int get_file_size(char *filename);
-
-void ls(int curr_cluster, char *dirname);
 int find_dirname_cluster(int curr_cluster, char *dirname);
-
 int file_size(int curr_cluster, char* filename);
 
-int main() 
+int main(int argc, const char* argv[]) 
 {
-    char* filename = "./fat32.img";
+    char* filename = argv[1];
     loadBPB(filename);
 
     FirstDataSector = BPB.BPB_RsvdSecCnt + BPB.BPB_NumFATs * BPB.BPB_FATSz32;
