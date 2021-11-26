@@ -57,9 +57,10 @@ void GetUserInput(void);
 //Builtins
 int loadBPB(const char *filename);
 void print_info(void);
-void ls(int curr_cluster, char *dirname);
-int file_size(int curr_cluster, char* filename);
-void cd(int curr_cluster, char *dirname);
+void ls(char *dirname);
+int file_size(char* filename);
+void cd(char *dirname);
+int create_file(char *filename);
 
 //Cluster Management
 int get_first_sector(int cluster_num);
@@ -67,7 +68,7 @@ int get_next_cluster(int curr_cluster);
 int is_last_cluster(int cluster);
 
 //Helper functions
-int find_dirname_cluster(int curr_cluster, char *dirname);
+int find_dirname_cluster(char *dirname);
 
 
 
@@ -111,7 +112,7 @@ void RunProgram(void) {
         }
         else if (!strcmp(command, "size")) {
             char *filename = UserInput[1];
-            int size = file_size(ENV.current_cluster, filename);
+            int size = file_size(filename);
             if(size >= 0) {
                 printf("The size of the file is %d bytes\n", size);
             }
@@ -119,11 +120,11 @@ void RunProgram(void) {
         }   
         else if (!strcmp(command, "ls")) {
             char *dirname = UserInput[1];
-            ls(ENV.current_cluster, dirname);  
+            ls(dirname);  
         }
         else if (!strcmp(command, "cd")) {
             char *dirname = UserInput[1];
-            cd(ENV.current_cluster, dirname);
+            cd(dirname);
         }
         else if (!strcmp(command, "creat")) {
 
@@ -268,13 +269,14 @@ int get_next_cluster(int curr_cluster) {
     return next_cluster;
 }
 
-void ls(int curr_cluster, char *dirname) {
+void ls(char *dirname) {
     DIRENTRY curr_dir;
     int i, offset;
+    int curr_cluster;
 
     if(strcmp(dirname, "") == 0) {
         curr_cluster = ENV.current_cluster;
-    } else if((curr_cluster = find_dirname_cluster(BPB.BPB_RootClus, dirname)) == -1) {
+    } else if((curr_cluster = find_dirname_cluster(dirname)) == -1) {
         return;
     }
 
@@ -302,9 +304,9 @@ void ls(int curr_cluster, char *dirname) {
     printf("\n");
 }
 
-void cd(int curr_cluster, char *dirname) {
+void cd(char *dirname) {
     int new_cluster;
-    if((new_cluster = find_dirname_cluster(curr_cluster, dirname)) == -1) {
+    if((new_cluster = find_dirname_cluster(dirname)) == -1) {
         return;
     } else if(new_cluster == 0) {
         new_cluster = BPB.BPB_RootClus;
@@ -317,9 +319,10 @@ void cd(int curr_cluster, char *dirname) {
     fread(&ENV.current_dir, sizeof(ENV.current_dir), 1, img_file);
 }
 
-int find_dirname_cluster(int curr_cluster, char * dirname) {
+int find_dirname_cluster(char * dirname) {
     DIRENTRY curr_dir;
     int i, j, offset;
+    int curr_cluster = ENV.current_cluster;
 
     while(!is_last_cluster(curr_cluster)) {
         for(i = 0; i*sizeof(curr_dir) < BPB.BPB_BytsPerSec; i++) {
@@ -339,9 +342,10 @@ int find_dirname_cluster(int curr_cluster, char * dirname) {
     return -1;
 }
 
-int file_size(int curr_cluster, char *filename) {
+int file_size(char *filename) {
     DIRENTRY curr_dir;
     int i, j, offset;
+    int curr_cluster = ENV.current_cluster;
 
     while(!is_last_cluster(curr_cluster)) {
         for(i = 0; i*sizeof(curr_dir) < BPB.BPB_BytsPerSec; i++) {
