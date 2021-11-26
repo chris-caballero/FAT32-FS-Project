@@ -7,3 +7,6 @@ exe:	filesystem.o
 
 filesystem.o:	filesystem.c
 	gcc $(FLAGS) -c filesystem.c
+
+start:
+	FAT32System.x fat32.img
