@@ -22,9 +22,16 @@ typedef struct {
     unsigned int DIR_FileSize;            // offset: 28
 } __attribute__((packed)) DIRENTRY;
 
+typedef struct {
+    unsigned int current_cluster;
+    DIRENTRY current_dir;
+} __attribute__((packed)) ENV_Info;
+
+
 
 FILE *  img_file;
 BPB_Info BPB;
+ENV_Info ENV;
 
 int FirstDataSector;
 int FirstFATSector;
@@ -48,28 +55,40 @@ char* DynStrPushBack(char* dest, char c);
 void GetUserInput(void);
 
 //Builtins
-int loadBPB(char *filename);
-int print_info(int offset);
-void ls(int curr_cluster, char* dirname);
+int loadBPB(const char *filename);
+void print_info(void);
+void ls(int curr_cluster, char *dirname);
+int file_size(int curr_cluster, char* filename);
+void cd(int curr_cluster, char *dirname);
 
 //Cluster Management
 int get_first_sector(int cluster_num);
 int get_next_cluster(int curr_cluster);
 int is_last_cluster(int cluster);
-int open_file(char* filename, char* mode);
-int get_file_size(char *filename);
-int find_dirname_cluster(int curr_cluster, char *dirname);
-int file_size(int curr_cluster, char* filename);
 
-int main(int argc, const char* argv[]) 
-{
-    char* filename = argv[1];
+//Helper functions
+int find_dirname_cluster(int curr_cluster, char *dirname);
+
+
+
+int open_file(char* filename, char* mode);
+
+
+int main(int argc, const char* argv[]) {
+    if(argc != 2) {
+        printf("Error, incorrect number of arguments\n");
+        return 0;
+    }
+
+    const char* filename = argv[1];
     loadBPB(filename);
 
     FirstDataSector = BPB.BPB_RsvdSecCnt + BPB.BPB_NumFATs * BPB.BPB_FATSz32;
     FirstFATSector = BPB.BPB_RsvdSecCnt;
 
     ATTR_LONG_NAME = ATTR_READ_ONLY | ATTR_HIDDEN | ATTR_SYSTEM | ATTR_VOLUME_ID;
+
+    ENV.current_cluster = BPB.BPB_RootClus;
 
     RunProgram();
 
@@ -88,11 +107,11 @@ void RunProgram(void) {
             break;
         }
         else if (!strcmp(command, "info")) {
-            print_info(0);
+            print_info();
         }
         else if (!strcmp(command, "size")) {
             char *filename = UserInput[1];
-            int size = file_size(0, filename);
+            int size = file_size(ENV.current_cluster, filename);
             if(size > 0) {
                 printf("The size of the file is %d bytes\n", size);
             }
@@ -100,10 +119,11 @@ void RunProgram(void) {
         }   
         else if (!strcmp(command, "ls")) {
             char *dirname = UserInput[1];
-            ls(BPB.BPB_RootClus, dirname);  
+            ls(ENV.current_cluster, dirname);  
         }
         else if (!strcmp(command, "cd")) {
-
+            char *dirname = UserInput[1];
+            cd(ENV.current_cluster, dirname);
         }
         else if (!strcmp(command, "creat")) {
 
@@ -213,8 +233,7 @@ void GetUserInput(void)
     }
 }
 
-int print_info(int offset) {
-
+void print_info(void) {
     printf("Bytes per Sector: %d\n", BPB.BPB_BytsPerSec);
 	printf("Sectors per Cluster: %d\n", BPB.BPB_SecPerClus);
     printf("Reserved Sector Count: %d\n", BPB.BPB_RsvdSecCnt);
@@ -222,12 +241,9 @@ int print_info(int offset) {
     printf("Total Sectors: %d\n", BPB.BPB_TotSec32);  
     printf("FAT Size: %d\n", BPB.BPB_FATSz32);
     printf("Root Cluster: %d\n", BPB.BPB_RootClus);
-
-    return 0;
-
 }
 
-int loadBPB(char *filename) {
+int loadBPB(const char *filename) {
     img_file = fopen(filename, "rb+");
     fread(&BPB, sizeof(BPB), 1, img_file);
     return 0;
@@ -257,7 +273,7 @@ void ls(int curr_cluster, char *dirname) {
     int i, offset;
 
     if(strcmp(dirname, "") == 0) {
-        curr_cluster = BPB.BPB_RootClus;
+        curr_cluster = ENV.current_cluster;
     } else if((curr_cluster = find_dirname_cluster(BPB.BPB_RootClus, dirname)) == -1) {
         return;
     }
@@ -286,6 +302,18 @@ void ls(int curr_cluster, char *dirname) {
     printf("\n");
 }
 
+void cd(int curr_cluster, char *dirname) {
+    int new_cluster;
+    if((new_cluster = find_dirname_cluster(curr_cluster, dirname)) == -1) {
+        return;
+    }
+    ENV.current_cluster = new_cluster;
+
+    int offset = get_first_sector(ENV.current_cluster) * BPB.BPB_BytsPerSec;
+    fseek(img_file, offset, SEEK_SET);
+    fread(&ENV.current_dir, sizeof(ENV.current_dir), 1, img_file);
+}
+
 int find_dirname_cluster(int curr_cluster, char * dirname) {
     DIRENTRY curr_dir;
     int i, j, offset;
@@ -312,8 +340,6 @@ int file_size(int curr_cluster, char *filename) {
     DIRENTRY curr_dir;
     int i, j, offset;
 
-    curr_cluster = BPB.BPB_RootClus;
-
     while(!is_last_cluster(curr_cluster)) {
         for(i = 0; i*sizeof(curr_dir) < BPB.BPB_BytsPerSec; i++) {
             offset = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec + i*sizeof(curr_dir);
@@ -339,20 +365,6 @@ int file_size(int curr_cluster, char *filename) {
 int get_first_sector(int cluster_num) {
     int offset = (cluster_num - 2) * BPB.BPB_SecPerClus;
     return FirstDataSector + offset;
-}
-
-
-int get_file_size(char *filename) {
-
-
-
-
-
-    fseek(img_file, 0L, SEEK_END);
-    int size = ftell(img_file);
-
-    rewind(img_file);
-    return size;
 }
 
 
