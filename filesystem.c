@@ -61,6 +61,8 @@ int get_file_size(char *filename);
 void ls(int curr_cluster, char *dirname);
 int find_dirname_cluster(int curr_cluster, char *dirname);
 
+int file_size(int curr_cluster, char* filename);
+
 int main() 
 {
     char* filename = "./fat32.img";
@@ -91,6 +93,11 @@ void RunProgram(void) {
             print_info(0);
         }
         else if (!strcmp(command, "size")) {
+            char *filename = UserInput[1];
+            int size = file_size(0, filename);
+            if(size > 0) {
+                printf("The size of the file is %d bytes\n", size);
+            }
             //printf("The size of the file is %d bytes\n", get_file_size(filename));
         }   
         else if (!strcmp(command, "ls")) {
@@ -303,6 +310,34 @@ int find_dirname_cluster(int curr_cluster, char * dirname) {
     return -1;
 }
 
+int file_size(int curr_cluster, char *filename) {
+    DIRENTRY curr_dir;
+    int i, j, offset;
+
+    curr_cluster = BPB.BPB_RootClus;
+
+    while(!is_last_cluster(curr_cluster)) {
+        for(i = 0; i*sizeof(curr_dir) < BPB.BPB_BytsPerSec; i++) {
+            offset = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec + i*sizeof(curr_dir);
+            fseek(img_file, offset, SEEK_SET);
+            fread(&curr_dir, sizeof(curr_dir), 1, img_file);
+
+            if(curr_dir.DIR_Name[0] != '\0' && !(curr_dir.DIR_Attributes & ATTR_LONG_NAME)) {
+                if(!(curr_dir.DIR_Attributes & ATTR_DIRECTORY) && strstr((char *) curr_dir.DIR_Name, filename) != NULL) {
+                    //printf("Size of file %s is %d bytes", filename, curr_dir.DIR_FileSize);
+                    return curr_dir.DIR_FileSize;
+                } else if(strstr((char *) curr_dir.DIR_Name, filename) != NULL) {
+                    printf("Error: %s is a directory\n", filename);
+                    return 0;
+                }
+            }
+        }
+        curr_cluster = get_next_cluster(curr_cluster);
+    }
+    printf("Error: file %s not found\n", filename);
+    return -1;
+}
+
 int get_first_sector(int cluster_num) {
     int offset = (cluster_num - 2) * BPB.BPB_SecPerClus;
     return FirstDataSector + offset;
@@ -310,6 +345,11 @@ int get_first_sector(int cluster_num) {
 
 
 int get_file_size(char *filename) {
+
+
+
+
+
     fseek(img_file, 0L, SEEK_END);
     int size = ftell(img_file);
 
