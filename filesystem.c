@@ -112,7 +112,7 @@ void RunProgram(void) {
         else if (!strcmp(command, "size")) {
             char *filename = UserInput[1];
             int size = file_size(ENV.current_cluster, filename);
-            if(size > 0) {
+            if(size >= 0) {
                 printf("The size of the file is %d bytes\n", size);
             }
             //printf("The size of the file is %d bytes\n", get_file_size(filename));
@@ -306,8 +306,11 @@ void cd(int curr_cluster, char *dirname) {
     int new_cluster;
     if((new_cluster = find_dirname_cluster(curr_cluster, dirname)) == -1) {
         return;
+    } else if(new_cluster == 0) {
+        new_cluster = BPB.BPB_RootClus;
     }
     ENV.current_cluster = new_cluster;
+    
 
     int offset = get_first_sector(ENV.current_cluster) * BPB.BPB_BytsPerSec;
     fseek(img_file, offset, SEEK_SET);
