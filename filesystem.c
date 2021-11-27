@@ -61,6 +61,7 @@ void ls(char *dirname);
 int file_size(char* filename);
 void cd(char *dirname);
 int create_file(char *filename);
+int create_directory(char *dirname);
 
 //Cluster Management
 int get_first_sector(int cluster_num);
@@ -69,8 +70,12 @@ int is_last_cluster(int cluster);
 
 //Helper functions
 int find_dirname_cluster(char *dirname);
-
-
+DIRENTRY new_file(char *filename);
+DIRENTRY new_directory(char *dirname);
+int find_and_allocate_empty_cluster(int last_cluster);
+int allocate_cluster(int free_cluster, char *filename);
+int find_last_cluster(void);
+void create_standard_directories(DIRENTRY *new_dir);
 
 int open_file(char* filename, char* mode);
 
@@ -127,10 +132,12 @@ void RunProgram(void) {
             cd(dirname);
         }
         else if (!strcmp(command, "creat")) {
-
+            char *filename = UserInput[1];
+            create_file(filename);
         }
         else if (!strcmp(command, "mkdir")) {
-
+            char *dirname = UserInput[1];
+            create_directory(dirname);
         }
         else if (!strcmp(command, "mv")) {
 
@@ -263,9 +270,6 @@ int get_next_cluster(int curr_cluster) {
     fseek(img_file, next_cluster, SEEK_SET);
     fread(&next_cluster, 4, 1, img_file);
 
-    if(next_cluster == 0xFFFFFFFF || next_cluster == 0x0FFFFFF8 || next_cluster == 0x0FFFFFFE) {
-        return -1;
-    }
     return next_cluster;
 }
 
@@ -287,6 +291,7 @@ void ls(char *dirname) {
             fread(&curr_dir, sizeof(curr_dir), 1, img_file);
 
             if(curr_dir.DIR_Name[0] != '\0' && !(curr_dir.DIR_Attributes & ATTR_LONG_NAME)) {
+                printf("...%d, %d...", curr_dir.DIR_FirstClusterHI,curr_dir.DIR_FirstClusterLO);
                 for(int j = 0; j < 11; j++) {
                     if(curr_dir.DIR_Name[j] == ' ') {
                         break;
@@ -309,14 +314,162 @@ void cd(char *dirname) {
     if((new_cluster = find_dirname_cluster(dirname)) == -1) {
         return;
     } else if(new_cluster == 0) {
-        new_cluster = BPB.BPB_RootClus;
+        new_cluster = ENV.current_cluster;
     }
     ENV.current_cluster = new_cluster;
     
-
     int offset = get_first_sector(ENV.current_cluster) * BPB.BPB_BytsPerSec;
     fseek(img_file, offset, SEEK_SET);
     fread(&ENV.current_dir, sizeof(ENV.current_dir), 1, img_file);
+}
+
+DIRENTRY new_file(char *filename) {
+    DIRENTRY new_dir;
+
+    for(int i = 0; i < 8; i++) {
+        new_dir.DIR_Name[i] = filename[i];
+    } 
+    for(int i = 8; i < 11; i++) {
+        new_dir.DIR_Name[i] = ' ';
+    }
+    new_dir.DIR_Attributes = 0;
+    new_dir.DIR_NTRes = 0;
+    new_dir.DIR_FileSize = 0;
+    new_dir.DIR_FirstClusterHI = 0;
+    new_dir.DIR_FirstClusterLO = 0;
+
+    return new_dir;
+}
+
+DIRENTRY new_directory(char *dirname) {
+    DIRENTRY new_dir = new_file(dirname);
+
+    new_dir.DIR_Attributes = ATTR_DIRECTORY;
+
+    return new_dir;
+}
+
+int create_file(char *filename) {
+    DIRENTRY curr_dir;
+    int i, offset, free;
+
+    DIRENTRY new_dir = new_file(filename);
+    int curr_cluster = ENV.current_cluster;
+
+    while(!is_last_cluster(curr_cluster)) {
+        for(i = 0; i*sizeof(curr_dir) < BPB.BPB_BytsPerSec; i++) {
+            offset = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec + i*sizeof(curr_dir);
+            fseek(img_file, offset, SEEK_SET);
+            fread(&curr_dir, sizeof(curr_dir), 1, img_file);
+
+            if(curr_dir.DIR_Name[0] == 0x0 || curr_dir.DIR_Name[0] == 0xE5) {
+                // free = find_and_allocate_empty_cluster(curr_cluster);
+                fseek(img_file, offset, SEEK_SET);
+                fwrite(&new_dir, sizeof(DIRENTRY), 1, img_file);
+                return 0;
+            }
+        }
+        curr_cluster = get_next_cluster(curr_cluster);
+    }
+
+    if((free = find_and_allocate_empty_cluster(curr_cluster)) == -1) {
+        return -1;
+    }
+    offset = get_first_sector(free) * BPB.BPB_BytsPerSec;
+    fseek(img_file, offset, SEEK_SET);
+    fwrite(&new_dir, sizeof(DIRENTRY), 1, img_file);;
+
+    return 0;
+}
+
+int create_directory(char *dirname) {
+    DIRENTRY curr_dir;
+    int i, offset, free;
+
+    DIRENTRY new_dir = new_directory(dirname);
+    int curr_cluster = ENV.current_cluster;
+
+    while(!is_last_cluster(curr_cluster)) {
+        for(i = 0; i*sizeof(curr_dir) < BPB.BPB_BytsPerSec; i++) {
+            offset = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec + i*sizeof(curr_dir);
+            fseek(img_file, offset, SEEK_SET);
+            fread(&curr_dir, sizeof(curr_dir), 1, img_file);
+
+            if(curr_dir.DIR_Name[0] == 0x0 || curr_dir.DIR_Name[0] == 0xE5) {
+                //free is 4B while Lo, Hi are 2B, so we need to split into two halfs [byte 4 - byte 3] [byte 2 - byte 1]
+                if((free = find_and_allocate_empty_cluster(curr_cluster)) == -1) {
+                    return -1;
+                }
+                new_dir.DIR_FirstClusterLO = free % 0x100;
+                new_dir.DIR_FirstClusterHI = free / 0x100;
+
+                // new_dir.DIR_FirstClusterLO = curr_cluster % 0x100;
+                // new_dir.DIR_FirstClusterHI = curr_cluster / 0x100;
+
+                fseek(img_file, offset, SEEK_SET);
+                fwrite(&new_dir, sizeof(DIRENTRY), 1, img_file);
+                return 0;
+            }
+        }
+        curr_cluster = get_next_cluster(curr_cluster);
+    }
+    if((free = find_and_allocate_empty_cluster(curr_cluster)) == -1) {
+        return -1;
+    }
+
+    new_dir.DIR_FirstClusterLO = free % 0x100;
+    new_dir.DIR_FirstClusterHI = free / 0x100;
+
+    offset = get_first_sector(free) * BPB.BPB_BytsPerSec;
+    fseek(img_file, offset, SEEK_SET);
+    fwrite(&new_dir, sizeof(DIRENTRY), 1, img_file);
+
+    create_standard_directories(&new_dir);
+
+    return 0;
+}
+
+void create_standard_directories(DIRENTRY *new_dir) {
+
+}
+
+int find_last_cluster(void) {
+    int i, j, offset;
+    int curr_cluster = BPB.BPB_RootClus;
+
+    while(!is_last_cluster(curr_cluster)) {
+        curr_cluster = get_next_cluster(curr_cluster);
+    }
+    
+    return curr_cluster;
+}
+
+int find_and_allocate_empty_cluster(int last_cluster) {
+    int current_cluster;
+    //int last_cluster = find_last_cluster();
+    int i = 0;
+    int base = FirstFATSector * BPB.BPB_BytsPerSec;
+    long position = base + i*4;
+
+    while(position < FirstDataSector * BPB.BPB_BytsPerSec) {
+        fseek(img_file, position, SEEK_SET);
+        fread(&current_cluster, 4, 1, img_file);
+        
+        if(current_cluster == 0x0) {
+            fseek(img_file, base + last_cluster * 4, SEEK_SET);
+            fwrite(&i, 1, 4, img_file);
+            int new_value = 0xFFFFFFFF;
+            fseek(img_file, position, SEEK_SET);
+            fwrite(&new_value, 1, 4, img_file);
+            printf("\n\nHIHIHI\n\n");
+            return i;
+        }
+
+        i += 1;
+        position = base + i*4;
+    }
+
+    return -1;
 }
 
 int find_dirname_cluster(char * dirname) {
@@ -359,7 +512,7 @@ int file_size(char *filename) {
                     return curr_dir.DIR_FileSize;
                 } else if(strstr((char *) curr_dir.DIR_Name, filename) != NULL) {
                     printf("Error: %s is a directory\n", filename);
-                    return 0;
+                    return -1;
                 }
             }
         }
