@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -60,8 +61,8 @@ void print_info(void);
 void ls(char *dirname);
 int file_size(char* filename);
 void cd(char *dirname);
-int create_file(char *filename);
-int create_directory(char *dirname);
+// int create_file(char *filename);
+// int create_directory(char *dirname);
 
 //Cluster Management
 int get_first_sector(int cluster_num);
@@ -75,7 +76,8 @@ DIRENTRY new_directory(char *dirname);
 int find_and_allocate_empty_cluster(int last_cluster);
 int allocate_cluster(int free_cluster, char *filename);
 int find_last_cluster(void);
-void create_standard_directories(DIRENTRY *new_dir);
+void create_standard_directories(int curr_cluster);
+void format(char * name);
 
 int open_file(char* filename, char* mode);
 
@@ -132,12 +134,12 @@ void RunProgram(void) {
             cd(dirname);
         }
         else if (!strcmp(command, "creat")) {
-            char *filename = UserInput[1];
-            create_file(filename);
+            // char *filename = UserInput[1];
+            // create_file(filename);
         }
         else if (!strcmp(command, "mkdir")) {
-            char *dirname = UserInput[1];
-            create_directory(dirname);
+            // char *dirname = UserInput[1];
+            // create_directory(dirname);
         }
         else if (!strcmp(command, "mv")) {
 
@@ -291,7 +293,7 @@ void ls(char *dirname) {
             fread(&curr_dir, sizeof(curr_dir), 1, img_file);
 
             if(curr_dir.DIR_Name[0] != '\0' && !(curr_dir.DIR_Attributes & ATTR_LONG_NAME)) {
-                printf("...%d, %d...", curr_dir.DIR_FirstClusterHI,curr_dir.DIR_FirstClusterLO);
+                //printf("...%d, %d...", curr_dir.DIR_FirstClusterHI,curr_dir.DIR_FirstClusterLO);
                 for(int j = 0; j < 11; j++) {
                     if(curr_dir.DIR_Name[j] == ' ') {
                         break;
@@ -327,7 +329,7 @@ DIRENTRY new_file(char *filename) {
     DIRENTRY new_dir;
 
     for(int i = 0; i < 8; i++) {
-        new_dir.DIR_Name[i] = filename[i];
+        new_dir.DIR_Name[i] = toupper(filename[i]);
     } 
     for(int i = 8; i < 11; i++) {
         new_dir.DIR_Name[i] = ' ';
@@ -349,6 +351,86 @@ DIRENTRY new_directory(char *dirname) {
     return new_dir;
 }
 
+int find_dirname_cluster(char * dirname) {
+    DIRENTRY curr_dir;
+    int i, j, offset;
+    int curr_cluster = ENV.current_cluster;
+
+    format(dirname);
+
+    while(!is_last_cluster(curr_cluster)) {
+        for(i = 0; i*sizeof(curr_dir) < BPB.BPB_BytsPerSec; i++) {
+            offset = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec + i*sizeof(curr_dir);
+            fseek(img_file, offset, SEEK_SET);
+            fread(&curr_dir, sizeof(curr_dir), 1, img_file);
+
+            if((curr_dir.DIR_Attributes & ATTR_DIRECTORY) && curr_dir.DIR_Name[0] != '\0' && !(curr_dir.DIR_Attributes & ATTR_LONG_NAME)) {
+                //printf("{[%s], [%s]}", (char *) curr_dir.DIR_Name, dirname);
+                int cont = 0;
+                for(int j = 0; j < 11; j++) {
+                    if(curr_dir.DIR_Name[j] != dirname[j]) {
+                        cont = 1;
+                        break;
+                    }
+                }
+                if(!cont) {
+                    return curr_dir.DIR_FirstClusterHI * 0x100 + curr_dir.DIR_FirstClusterLO;
+                }
+            }
+        }
+        curr_cluster = get_next_cluster(curr_cluster);
+    }
+    printf("Error: directory %s not found\n", dirname);
+    return -1;
+}
+
+int file_size(char *filename) {
+    DIRENTRY curr_dir;
+    int i, j, offset;
+    int curr_cluster = ENV.current_cluster;
+
+    while(!is_last_cluster(curr_cluster)) {
+        for(i = 0; i*sizeof(curr_dir) < BPB.BPB_BytsPerSec; i++) {
+            offset = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec + i*sizeof(curr_dir);
+            fseek(img_file, offset, SEEK_SET);
+            fread(&curr_dir, sizeof(curr_dir), 1, img_file);
+
+            if(curr_dir.DIR_Name[0] != '\0' && !(curr_dir.DIR_Attributes & ATTR_LONG_NAME)) {
+                if(!(curr_dir.DIR_Attributes & ATTR_DIRECTORY) && strstr((char *) curr_dir.DIR_Name, filename) != NULL) {
+                    //printf("Size of file %s is %d bytes", filename, curr_dir.DIR_FileSize);
+                    return curr_dir.DIR_FileSize;
+                } else if(strstr((char *) curr_dir.DIR_Name, filename) != NULL) {
+                    printf("Error: %s is a directory\n", filename);
+                    return -1;
+                }
+            }
+        }
+        curr_cluster = get_next_cluster(curr_cluster);
+    }
+    printf("Error: file %s not found\n", filename);
+    return -1;
+}
+
+int get_first_sector(int cluster_num) {
+    int offset = (cluster_num - 2) * BPB.BPB_SecPerClus;
+    return FirstDataSector + offset;
+}
+
+void format(char * name) {
+    int i;
+    for(i = 0; i < strlen(name); i++) {
+        name[i] = toupper(name[i]);
+    } 
+    for(; i < 11; i++) {
+        name[i] = ' ';
+    }
+}
+
+int open_file(char* filename, char* mode) {
+    return 0;
+}
+
+/*
 int create_file(char *filename) {
     DIRENTRY curr_dir;
     int i, offset, free;
@@ -408,6 +490,9 @@ int create_directory(char *dirname) {
 
                 fseek(img_file, offset, SEEK_SET);
                 fwrite(&new_dir, sizeof(DIRENTRY), 1, img_file);
+
+                create_standard_directories(free);
+
                 return 0;
             }
         }
@@ -424,13 +509,31 @@ int create_directory(char *dirname) {
     fseek(img_file, offset, SEEK_SET);
     fwrite(&new_dir, sizeof(DIRENTRY), 1, img_file);
 
-    create_standard_directories(&new_dir);
+    create_standard_directories(free);
 
     return 0;
 }
 
-void create_standard_directories(DIRENTRY *new_dir) {
+void create_standard_directories(int curr_cluster) {
+    //printf("%d", HI * 0x100 + LO);
+    int offset;
+    DIRENTRY dir = new_directory("..");
+    if(ENV.current_cluster != BPB.BPB_RootClus) {
+        dir.DIR_FirstClusterHI = ENV.current_dir.DIR_FirstClusterHI;
+        dir.DIR_FirstClusterLO = ENV.current_dir.DIR_FirstClusterLO;
+    }
+    offset = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec;
+    fseek(img_file, offset, SEEK_SET);
+    fwrite(&dir, sizeof(DIRENTRY), 1, img_file);
 
+    dir = new_directory(".");
+    offset += sizeof(DIRENTRY);
+    fseek(img_file, offset, SEEK_SET);
+    fwrite(&dir, sizeof(DIRENTRY), 1, img_file);
+
+    char end = 0x0;
+
+    fwrite(&end, 1, 1, img_file);
 }
 
 int find_last_cluster(void) {
@@ -461,7 +564,7 @@ int find_and_allocate_empty_cluster(int last_cluster) {
             int new_value = 0xFFFFFFFF;
             fseek(img_file, position, SEEK_SET);
             fwrite(&new_value, 1, 4, img_file);
-            printf("\n\nHIHIHI\n\n");
+            //printf("\n\nHIHIHI\n\n");
             return i;
         }
 
@@ -471,72 +574,6 @@ int find_and_allocate_empty_cluster(int last_cluster) {
 
     return -1;
 }
-
-int find_dirname_cluster(char * dirname) {
-    DIRENTRY curr_dir;
-    int i, j, offset;
-    int curr_cluster = ENV.current_cluster;
-
-    while(!is_last_cluster(curr_cluster)) {
-        for(i = 0; i*sizeof(curr_dir) < BPB.BPB_BytsPerSec; i++) {
-            offset = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec + i*sizeof(curr_dir);
-            fseek(img_file, offset, SEEK_SET);
-            fread(&curr_dir, sizeof(curr_dir), 1, img_file);
-
-            if((curr_dir.DIR_Attributes & ATTR_DIRECTORY) && curr_dir.DIR_Name[0] != '\0' && !(curr_dir.DIR_Attributes & ATTR_LONG_NAME)) {
-                if(strstr((char *) curr_dir.DIR_Name, dirname) != NULL) {
-                    return curr_dir.DIR_FirstClusterHI * 0x100 + curr_dir.DIR_FirstClusterLO;
-                }
-            }
-        }
-        curr_cluster = get_next_cluster(curr_cluster);
-    }
-    printf("Error: directory %s not found\n", dirname);
-    return -1;
-}
-
-int file_size(char *filename) {
-    DIRENTRY curr_dir;
-    int i, j, offset;
-    int curr_cluster = ENV.current_cluster;
-
-    while(!is_last_cluster(curr_cluster)) {
-        for(i = 0; i*sizeof(curr_dir) < BPB.BPB_BytsPerSec; i++) {
-            offset = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec + i*sizeof(curr_dir);
-            fseek(img_file, offset, SEEK_SET);
-            fread(&curr_dir, sizeof(curr_dir), 1, img_file);
-
-            if(curr_dir.DIR_Name[0] != '\0' && !(curr_dir.DIR_Attributes & ATTR_LONG_NAME)) {
-                if(!(curr_dir.DIR_Attributes & ATTR_DIRECTORY) && strstr((char *) curr_dir.DIR_Name, filename) != NULL) {
-                    //printf("Size of file %s is %d bytes", filename, curr_dir.DIR_FileSize);
-                    return curr_dir.DIR_FileSize;
-                } else if(strstr((char *) curr_dir.DIR_Name, filename) != NULL) {
-                    printf("Error: %s is a directory\n", filename);
-                    return -1;
-                }
-            }
-        }
-        curr_cluster = get_next_cluster(curr_cluster);
-    }
-    printf("Error: file %s not found\n", filename);
-    return -1;
-}
-
-int get_first_sector(int cluster_num) {
-    int offset = (cluster_num - 2) * BPB.BPB_SecPerClus;
-    return FirstDataSector + offset;
-}
-
-
-
-int open_file(char* filename, char* mode) {
-    return 0;
-}
-
-
-
-
-/*
     DIRENTRY curr_dir;
     int i, j, offset;
 
