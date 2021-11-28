@@ -85,10 +85,11 @@ int get_next_cluster(int curr_cluster);
 int is_last_cluster(int cluster);
 
 //FILETABLE Management
-void FTAdd(const char* fileName, const char* mode);
+void FTAdd(const char* fileName, const char* mode, int root_cluster);
 void FTRemove(const char* fileName);
 int FTIsOpen(const char* fileName);
 void FTCleanup();
+FILETABLE* get_entry_FT(int cluster_num);
 
 //Helper functions
 int find_dirname_cluster(char *dirname);
@@ -99,6 +100,9 @@ int allocate_cluster(int free_cluster, char *filename);
 int find_last_cluster(void);
 void create_standard_directories(int curr_cluster);
 void format(char * name);
+int isFile(int first_cluster);
+int isValidMode(char * mode);
+int isValidPermissions(int first_cluster, char * mode);
 
 
 int main(int argc, const char* argv[]) {
@@ -167,19 +171,24 @@ void RunProgram(void) {
 
         }
         else if (!strcmp(command, "open")) {
-            // if (openFile() == -1) {
             //     printf("Error");
-            // }
-
+            char *filename = UserInput[1];
+            char *mode = UserInput[2];
+            open_file(filename, mode);
         }
         else if (!strcmp(command, "close")) {
-
+            char *filename = UserInput[1];
+            close_file(filename);
         }
         else if (!strcmp(command, "lseek")) {
-
+            char *filename = UserInput[1];
+            int offset = UserInput[2];
+            lseek(filename, offset);
         }
         else if (!strcmp(command, "read")) {
-
+            char *filename = UserInput[1];
+            int size = atoi(UserInput[2]);
+            read_file(filename, size);
         }
         else if (!strcmp(command, "write")) {
 
@@ -415,7 +424,7 @@ int file_size(char *filename) {
         for(i = 0; i*sizeof(curr_dir) < BPB.BPB_BytsPerSec; i++) {
             offset = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec + i*sizeof(curr_dir);
             fseek(img_file, offset, SEEK_SET);
-            fread(&curr_dir, sizeof(curr_dir), 1, img_file);
+            fread(&curr_dir, sizeof(DIRENTRY), 1, img_file);
 
             if(curr_dir.DIR_Name[0] != '\0' && !(curr_dir.DIR_Attributes & ATTR_LONG_NAME)) {
                 if(!(curr_dir.DIR_Attributes & ATTR_DIRECTORY) && strstr((char *) curr_dir.DIR_Name, filename) != NULL) {
@@ -449,40 +458,49 @@ void format(char * name) {
 }
 
 int open_file(char* filename, char* mode) {
-
+    int cluster;
    //Mode Check
-    if (strcmp(mode, "r") != 0 && strcmp(mode, "w") != 0 &&
-        strcmp(mode, "rw") != 0 && strcmp(mode, "wr") != 0)
-    {
+    if((cluster = find_dirname_cluster(filename)) == -1) {
+        printf("ERROR: File not Found\n");
+    } else if(!isFile(cluster)) {
+        printf("ERROR: %s is a directory\n", filename);
+    } else if (!isValidMode(mode)) {
         printf("ERROR: Invalid mode, options are: r w rw wr\n");
+    } else if(!isValidPermissions(cluster, mode)) {
+        printf("ERROR: Invalid permissions, file %s is read-only\n", filename);
     }
     //Check if File exists
-    else if (FTIsOpen(filename))
+    else if (get_entry_FT(cluster) != NULL)
     {
         printf("ERROR: File already Open\n");
+    } else {
+        FTAdd(filename, mode, cluster);
     }
-
-    else
-    {
-    //SET ROOT CLUSTER FOR FILENAME
-
-    //Get Directory Contents
-
-    //Loop thru Directory Contents
-
-    //If match, Add to table
-
-    }
-
-    //If no match, Error out.
-    printf("ERROR: File does not exist in current directory. \n");
 
     return 0;
 }
 
+int isValidPermissions(int first_cluster, char * mode) {
+    DIRENTRY dir;
+    int offset = get_first_sector(first_cluster) * BPB.BPB_BytsPerSec;
+    fseek(img_file, offset, SEEK_SET);
+    fread(&dir, sizeof(dir), 1, img_file);
+    if(((dir.DIR_Attributes & ATTR_READ_ONLY) != 0) && 
+        (strcmp(mode, "w") == 0 || strcmp(mode, "rw") == 0 || strcmp(mode, "wr") == 0)) {
+        return 0;
+    }
+    return 1;
+}
+
+int isValidMode(char * mode) {
+    return !(strcmp(mode, "r") != 0 && strcmp(mode, "w") != 0 && 
+            strcmp(mode, "rw") != 0 && strcmp(mode, "wr") != 0);
+}
+
 int close_file(char* filename)
 {
-    if (!FTIsOpen(filename)) 
+    int cluster = find_dirname_cluster(filename);
+    if (get_entry_FT(cluster) != NULL) 
     {
         FTRemove(filename);
     }
@@ -492,7 +510,7 @@ int close_file(char* filename)
     }
 }
 
-void FTAdd(const char* fileName, const char* mode) {
+void FTAdd(const char* fileName, const char* mode, int root_cluster) {
     if (FTIsOpen(fileName)) {
         printf("ERROR: File already open.\n");
     }
@@ -502,6 +520,7 @@ void FTAdd(const char* fileName, const char* mode) {
         strcpy(tmp->mode, mode);
         tmp->offset = 0;
         tmp->next = NULL;
+        tmp->root_cluster = root_cluster;
         if (root == NULL) {
             root = tmp;
         }
@@ -570,7 +589,7 @@ void lseek(char * filename, int offset) {
     int clus = find_dirname_cluster(filename);
     if((itr = clusterInFT(clus)) != NULL) {
         fseek(img_file, clus, SEEK_SET);
-        fread(&file, sizeof(DIRENTRY), 1, img_file);
+        fread(&file, sizeof(file), 1, img_file);
         if(offset > file.DIR_FileSize) {
             printf("Error: Offset out of bounds\n");
         } else {
@@ -618,6 +637,17 @@ int read_file(char *filename, int size) {
     } else {
         printf("Error: %s is not in the open file table", filename);
         return -1;
+    }
+    return 0;
+}
+
+int isFile(int first_cluster) {
+    DIRENTRY dir;
+    int offset = get_first_sector(first_cluster) * BPB.BPB_BytsPerSec;
+    fseek(img_file, offset, SEEK_SET);
+    fread(&dir, sizeof(dir), 1, img_file);
+    if(!(dir.DIR_Attributes & ATTR_DIRECTORY)) {
+        return 1;
     }
     return 0;
 }
