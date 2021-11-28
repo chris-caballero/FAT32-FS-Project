@@ -23,14 +23,14 @@ typedef struct {
     unsigned int DIR_FileSize;            // offset: 28
 } __attribute__((packed)) DIRENTRY;
 
-typedef struct
+struct FILETABLE
 {
     char name[32];
     char mode[8];
     unsigned int root_cluster;
     unsigned int offset;
-    FILETABLE* next;
-} __attribute__((packed)) FILETABLE;
+    struct FILETABLE* next;
+} __attribute__((packed));
 
 typedef struct {
     unsigned int current_cluster;
@@ -58,7 +58,7 @@ unsigned char ATTR_LONG_NAME;
 unsigned int bytes_per_cluster;
 
 char* UserInput[5]; //Longest Command is 4 long, so this will give us just enough space for 4 args and End line
-FILETABLE* root = NULL;
+struct FILETABLE* root = NULL;
  
 //Shell Commands
 void RunProgram(void);
@@ -74,7 +74,7 @@ void cd(char *dirname);
 //open -> write
 int open_file(char* filename, char* mode);
 int close_file(char* filename);
-void lseek(char * filename, int offset);
+void seek_position(char * filename, int offset);
 int read_file(char *filename, int size);
 // int create_file(char *filename);
 // int create_directory(char *dirname);
@@ -84,15 +84,16 @@ int get_first_sector(int cluster_num);
 int get_next_cluster(int curr_cluster);
 int is_last_cluster(int cluster);
 
-//FILETABLE Management
+//struct FILETABLE Management
 void FTAdd(const char* fileName, const char* mode, int root_cluster);
 void FTRemove(const char* fileName);
 int FTIsOpen(const char* fileName);
 void FTCleanup();
-FILETABLE* get_entry_FT(int cluster_num);
+struct FILETABLE* get_entry_FT(int cluster_num);
 
 //Helper functions
 int find_dirname_cluster(char *dirname);
+DIRENTRY find_filename_cluster(char *filename) ;
 DIRENTRY new_file(char *filename);
 DIRENTRY new_directory(char *dirname);
 int find_and_allocate_empty_cluster(int last_cluster);
@@ -135,6 +136,28 @@ void RunProgram(void) {
 
         char *command = UserInput[0];
 
+        // cd("blue");
+        // cd("blue1");
+        // cd("blue2");
+        // cd("blue3");
+        // cd("blue4");
+        // cd("blue5");
+        // cd("blue6");
+        // cd("blue7");
+        // cd("blue8");
+        // cd("blue9");
+        // cd("blue10");
+        // cd("blue11");
+        // cd("blue12");
+        // cd("blue13");
+        // cd("blue14");
+        // cd("blue15");
+        // cd("blue16");
+        // cd("blue17");
+        // cd("blue18");
+        // cd("blue19");
+        // cd("blue20");
+
         if (!strcmp(command, "exit")) {
             //release resources 
             FTCleanup();
@@ -171,7 +194,6 @@ void RunProgram(void) {
 
         }
         else if (!strcmp(command, "open")) {
-            //     printf("Error");
             char *filename = UserInput[1];
             char *mode = UserInput[2];
             open_file(filename, mode);
@@ -182,8 +204,8 @@ void RunProgram(void) {
         }
         else if (!strcmp(command, "lseek")) {
             char *filename = UserInput[1];
-            int offset = UserInput[2];
-            lseek(filename, offset);
+            int offset = atoi(UserInput[2]);
+            seek_position(filename, offset);
         }
         else if (!strcmp(command, "read")) {
             char *filename = UserInput[1];
@@ -347,7 +369,7 @@ void cd(char *dirname) {
     if((new_cluster = find_dirname_cluster(dirname)) == -1) {
         return;
     } else if(new_cluster == 0) {
-        new_cluster = ENV.current_cluster;
+        new_cluster = BPB.BPB_RootClus;
     }
     ENV.current_cluster = new_cluster;
     
@@ -382,6 +404,41 @@ DIRENTRY new_directory(char *dirname) {
     return new_dir;
 }
 
+DIRENTRY find_filename_cluster(char *filename) {
+    DIRENTRY curr_dir;
+    int i, j, offset;
+    int curr_cluster = ENV.current_cluster;
+
+    format(filename);
+
+    while(!is_last_cluster(curr_cluster)) {
+        for(i = 0; i*sizeof(curr_dir) < BPB.BPB_BytsPerSec; i++) {
+            offset = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec + i*sizeof(curr_dir);
+            fseek(img_file, offset, SEEK_SET);
+            fread(&curr_dir, sizeof(curr_dir), 1, img_file);
+
+            if(!(curr_dir.DIR_Attributes & ATTR_DIRECTORY) && curr_dir.DIR_Name[0] != '\0' && !(curr_dir.DIR_Attributes & ATTR_LONG_NAME)) {
+                //printf("{[%s], [%s]}", (char *) curr_dir.DIR_Name, filename);
+                int cont = 0;
+                for(int j = 0; j < 11; j++) {
+                    if(curr_dir.DIR_Name[j] != filename[j]) {
+                        cont = 1;
+                        break;
+                    }
+                }
+                if(!cont) {
+                    return curr_dir;
+                }
+            }
+        }
+        curr_cluster = get_next_cluster(curr_cluster);
+    }
+    printf("Error: file %s not found\n", filename);
+    curr_dir.DIR_Name[0] = 0x0;
+
+    return curr_dir;
+}
+
 int find_dirname_cluster(char * dirname) {
     DIRENTRY curr_dir;
     int i, j, offset;
@@ -394,9 +451,8 @@ int find_dirname_cluster(char * dirname) {
             offset = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec + i*sizeof(curr_dir);
             fseek(img_file, offset, SEEK_SET);
             fread(&curr_dir, sizeof(curr_dir), 1, img_file);
-
+            
             if((curr_dir.DIR_Attributes & ATTR_DIRECTORY) && curr_dir.DIR_Name[0] != '\0' && !(curr_dir.DIR_Attributes & ATTR_LONG_NAME)) {
-                //printf("{[%s], [%s]}", (char *) curr_dir.DIR_Name, dirname);
                 int cont = 0;
                 for(int j = 0; j < 11; j++) {
                     if(curr_dir.DIR_Name[j] != dirname[j]) {
@@ -420,16 +476,28 @@ int file_size(char *filename) {
     int i, j, offset;
     int curr_cluster = ENV.current_cluster;
 
+    format(filename);
+
     while(!is_last_cluster(curr_cluster)) {
         for(i = 0; i*sizeof(curr_dir) < BPB.BPB_BytsPerSec; i++) {
             offset = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec + i*sizeof(curr_dir);
             fseek(img_file, offset, SEEK_SET);
-            fread(&curr_dir, sizeof(DIRENTRY), 1, img_file);
+            fread(&curr_dir, sizeof(curr_dir), 1, img_file);
 
             if(curr_dir.DIR_Name[0] != '\0' && !(curr_dir.DIR_Attributes & ATTR_LONG_NAME)) {
-                if(!(curr_dir.DIR_Attributes & ATTR_DIRECTORY) && strstr((char *) curr_dir.DIR_Name, filename) != NULL) {
+                if((curr_dir.DIR_Attributes & ATTR_DIRECTORY) == 0) {
+                    int cont = 0;
+                    for(int j = 0; j < 11; j++) {
+                        if(curr_dir.DIR_Name[j] != filename[j]) {
+                            cont = 1;
+                            break;
+                        }
+                    }
+                    if(!cont) {
+                        return curr_dir.DIR_FileSize;
+                    }
                     //printf("Size of file %s is %d bytes", filename, curr_dir.DIR_FileSize);
-                    return curr_dir.DIR_FileSize;
+                    //return curr_dir.DIR_FileSize;
                 } else if(strstr((char *) curr_dir.DIR_Name, filename) != NULL) {
                     printf("Error: %s is a directory\n", filename);
                     return -1;
@@ -455,15 +523,16 @@ void format(char * name) {
     for(; i < 11; i++) {
         name[i] = ' ';
     }
+    name[11] = '\0';
 }
 
 int open_file(char* filename, char* mode) {
     int cluster;
+    DIRENTRY file = find_filename_cluster(filename);
+    cluster = file.DIR_FirstClusterHI * 0x100 + file.DIR_FirstClusterLO;
    //Mode Check
-    if((cluster = find_dirname_cluster(filename)) == -1) {
+    if(file.DIR_Name[0] == 0x0) {
         printf("ERROR: File not Found\n");
-    } else if(!isFile(cluster)) {
-        printf("ERROR: %s is a directory\n", filename);
     } else if (!isValidMode(mode)) {
         printf("ERROR: Invalid mode, options are: r w rw wr\n");
     } else if(!isValidPermissions(cluster, mode)) {
@@ -474,6 +543,7 @@ int open_file(char* filename, char* mode) {
     {
         printf("ERROR: File already Open\n");
     } else {
+        //printf("%d", cluster);
         FTAdd(filename, mode, cluster);
     }
 
@@ -499,7 +569,8 @@ int isValidMode(char * mode) {
 
 int close_file(char* filename)
 {
-    int cluster = find_dirname_cluster(filename);
+    DIRENTRY file = find_filename_cluster(filename);
+    int cluster = file.DIR_FirstClusterHI * 0x100 + file.DIR_FirstClusterLO;
     if (get_entry_FT(cluster) != NULL) 
     {
         FTRemove(filename);
@@ -507,7 +578,9 @@ int close_file(char* filename)
     else
     {
         printf("ERROR: File not open.\n");
+        return -1;
     }
+    return 0;
 }
 
 void FTAdd(const char* fileName, const char* mode, int root_cluster) {
@@ -515,7 +588,7 @@ void FTAdd(const char* fileName, const char* mode, int root_cluster) {
         printf("ERROR: File already open.\n");
     }
     else {
-        FILETABLE* tmp = calloc(1, sizeof(FILETABLE));
+        struct FILETABLE* tmp = calloc(1, sizeof(struct FILETABLE));
         strcpy(tmp->name, fileName);
         strcpy(tmp->mode, mode);
         tmp->offset = 0;
@@ -525,7 +598,7 @@ void FTAdd(const char* fileName, const char* mode, int root_cluster) {
             root = tmp;
         }
         else {
-            FILETABLE* itr = root;
+            struct FILETABLE* itr = root;
             while (itr->next != NULL) {
                 itr = itr->next;
             }
@@ -535,8 +608,8 @@ void FTAdd(const char* fileName, const char* mode, int root_cluster) {
 }
 
 void FTRemove(const char* fileName) {
-    FILETABLE* itr1;
-    FILETABLE* itr2 = NULL;
+    struct FILETABLE* itr1;
+    struct FILETABLE* itr2 = NULL;
     for (itr1 = root; itr1 != NULL; itr2 = itr1, itr1 = itr1->next) {
         if (strcmp(itr1->name, fileName) == 0) {
             if (itr2 == NULL) {
@@ -552,7 +625,7 @@ void FTRemove(const char* fileName) {
 }
 
 int FTIsOpen(const char* fileName) {
-    FILETABLE* itr;
+    struct FILETABLE* itr;
     for (itr = root; itr != NULL; itr = itr->next) {
         if (strcmp(itr->name, fileName) == 0) {
             return 1;
@@ -561,8 +634,8 @@ int FTIsOpen(const char* fileName) {
     return 0;
 }
 
-FILETABLE* get_entry_FT(int cluster_num) {
-    FILETABLE* itr;
+struct FILETABLE* get_entry_FT(int cluster_num) {
+    struct FILETABLE* itr;
     for (itr = root; itr != NULL; itr = itr->next) {
         if (itr->root_cluster == cluster_num) {
             return itr;
@@ -572,8 +645,8 @@ FILETABLE* get_entry_FT(int cluster_num) {
 }
 
 void FTCleanup() {
-    FILETABLE* itr1 = root;
-    FILETABLE* itr2;
+    struct FILETABLE* itr1 = root;
+    struct FILETABLE* itr2;
     while (itr1 != NULL) {
         itr2 = itr1->next;
         free(itr1);
@@ -582,12 +655,12 @@ void FTCleanup() {
     root = NULL;
 }
 
-void lseek(char * filename, int offset) {
-    FILETABLE* itr;
-    DIRENTRY file;
+void seek_position(char * filename, int offset) {
+    struct FILETABLE* itr;
+    DIRENTRY file = find_filename_cluster(filename);
+    int clus = file.DIR_FirstClusterHI * 0x100 + file.DIR_FirstClusterLO;
 
-    int clus = find_dirname_cluster(filename);
-    if((itr = clusterInFT(clus)) != NULL) {
+    if((itr = get_entry_FT(clus)) != NULL) {
         fseek(img_file, clus, SEEK_SET);
         fread(&file, sizeof(file), 1, img_file);
         if(offset > file.DIR_FileSize) {
@@ -601,18 +674,16 @@ void lseek(char * filename, int offset) {
 }
 
 int read_file(char *filename, int size) {
-    char * buff;
-    FILETABLE* itr;
-    DIRENTRY file;
-    int temp_offset, sz;
+    struct FILETABLE* itr;
+    int temp_offset, sz, curr_cluster;
+    DIRENTRY file = find_filename_cluster(filename);
 
-    int first_cluster = find_dirname_cluster(filename), curr_cluster = first_cluster;
-    if((itr = clusterInFT(first_cluster)) != NULL) {
-        fseek(img_file, first_cluster, SEEK_SET);
-        fread(&file, sizeof(DIRENTRY), 1, img_file);
+    int first_cluster = file.DIR_FirstClusterHI * 0x100 + file.DIR_FirstClusterLO;
+    curr_cluster = first_cluster;
 
-        if(itr->offset + size > file_size) {
-            size = file_size - itr->offset;
+    if((itr = get_entry_FT(first_cluster)) != NULL) {
+        if(itr->offset + size > file.DIR_FileSize) {
+            size = file.DIR_FileSize - itr->offset;
         }
 
         temp_offset = itr->offset;
@@ -620,18 +691,24 @@ int read_file(char *filename, int size) {
             temp_offset = itr->offset - bytes_per_cluster;
         }
         //if overflow we only read to end, otherwise read the entire size
-        
+        int position = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec + itr->offset;
+        //printf("position %d", position);
         do {
             sz = (temp_offset + size > bytes_per_cluster) ? bytes_per_cluster - temp_offset : size;
-            buff = (char *) malloc(sz + 1);
-            int position = get_first_sector(first_cluster) * BPB.BPB_BytsPerSec + sz;
+            char buff[sz];
+
             fseek(img_file, position, SEEK_SET);
-            fwrite(&buff, 1, sz, img_file);
+            fread(&buff, sizeof(buff), 1, img_file);
+
+            buff[sz] = '\0';
             printf("%s", buff);
-            curr_cluster = get_next_cluster(curr_cluster);
+
             size -= (bytes_per_cluster - temp_offset);
             temp_offset = 0;
-        } while(size > 0);
+            curr_cluster = get_next_cluster(curr_cluster);
+
+            position = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec;
+        } while(size > 0 && !is_last_cluster(curr_cluster));
 
 
     } else {
