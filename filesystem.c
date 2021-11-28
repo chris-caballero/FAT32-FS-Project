@@ -22,6 +22,12 @@ typedef struct {
     unsigned int DIR_FileSize;            // offset: 28
 } __attribute__((packed)) DIRENTRY;
 
+typedef struct
+{
+    char name[32];
+    char mode[8];
+    struct FileTable* next;
+} __attribute__((packed)) FILETABLE;
 
 FILE *  img_file;
 BPB_Info BPB;
@@ -56,10 +62,12 @@ void ls(int curr_cluster, char* dirname);
 int get_first_sector(int cluster_num);
 int get_next_cluster(int curr_cluster);
 int is_last_cluster(int cluster);
-int open_file(char* filename, char* mode);
 int get_file_size(char *filename);
 int find_dirname_cluster(int curr_cluster, char *dirname);
 int file_size(int curr_cluster, char* filename);
+
+//File Table Functions
+int open_file(char* filename, char* mode);
 
 int main(int argc, const char* argv[]) 
 {
