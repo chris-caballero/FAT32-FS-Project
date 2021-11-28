@@ -661,8 +661,6 @@ void seek_position(char * filename, int offset) {
     int clus = file.DIR_FirstClusterHI * 0x100 + file.DIR_FirstClusterLO;
 
     if((itr = get_entry_FT(clus)) != NULL) {
-        fseek(img_file, clus, SEEK_SET);
-        fread(&file, sizeof(file), 1, img_file);
         if(offset > file.DIR_FileSize) {
             printf("Error: Offset out of bounds\n");
         } else {
