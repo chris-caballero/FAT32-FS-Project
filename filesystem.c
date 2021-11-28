@@ -55,7 +55,7 @@ unsigned char ATTR_ARCHIVE = 0x20;
 
 unsigned char ATTR_LONG_NAME;
 
-
+unsigned int bytes_per_cluster;
 
 char* UserInput[5]; //Longest Command is 4 long, so this will give us just enough space for 4 args and End line
 FILETABLE* root = NULL;
@@ -71,9 +71,11 @@ void print_info(void);
 void ls(char *dirname);
 int file_size(char* filename);
 void cd(char *dirname);
+//open -> write
 int open_file(char* filename, char* mode);
 int close_file(char* filename);
 void lseek(char * filename, int offset);
+int read_file(char *filename, int size);
 // int create_file(char *filename);
 // int create_directory(char *dirname);
 
@@ -84,7 +86,7 @@ int is_last_cluster(int cluster);
 
 //FILETABLE Management
 void FTAdd(const char* fileName, const char* mode);
-void FTRemove(const char* fileName;
+void FTRemove(const char* fileName);
 int FTIsOpen(const char* fileName);
 void FTCleanup();
 
@@ -107,6 +109,8 @@ int main(int argc, const char* argv[]) {
 
     const char* filename = argv[1];
     loadBPB(filename);
+
+    bytes_per_cluster = BPB.BPB_BytsPerSec * BPB.BPB_SecPerClus;
 
     FirstDataSector = BPB.BPB_RsvdSecCnt + BPB.BPB_NumFATs * BPB.BPB_FATSz32;
     FirstFATSector = BPB.BPB_RsvdSecCnt;
@@ -538,6 +542,16 @@ int FTIsOpen(const char* fileName) {
     return 0;
 }
 
+FILETABLE* get_entry_FT(int cluster_num) {
+    FILETABLE* itr;
+    for (itr = root; itr != NULL; itr = itr->next) {
+        if (itr->root_cluster == cluster_num) {
+            return itr;
+        }
+    }
+    return NULL;
+}
+
 void FTCleanup() {
     FILETABLE* itr1 = root;
     FILETABLE* itr2;
@@ -550,9 +564,63 @@ void FTCleanup() {
 }
 
 void lseek(char * filename, int offset) {
+    FILETABLE* itr;
+    DIRENTRY file;
 
+    int clus = find_dirname_cluster(filename);
+    if((itr = clusterInFT(clus)) != NULL) {
+        fseek(img_file, clus, SEEK_SET);
+        fread(&file, sizeof(DIRENTRY), 1, img_file);
+        if(offset > file.DIR_FileSize) {
+            printf("Error: Offset out of bounds\n");
+        } else {
+            itr->offset = offset;
+        }
+    } else {
+        printf("%s is not in the open file table", filename);
+    }
 }
 
+int read_file(char *filename, int size) {
+    char * buff;
+    FILETABLE* itr;
+    DIRENTRY file;
+    int temp_offset, sz;
+
+    int first_cluster = find_dirname_cluster(filename), curr_cluster = first_cluster;
+    if((itr = clusterInFT(first_cluster)) != NULL) {
+        fseek(img_file, first_cluster, SEEK_SET);
+        fread(&file, sizeof(DIRENTRY), 1, img_file);
+
+        if(itr->offset + size > file_size) {
+            size = file_size - itr->offset;
+        }
+
+        temp_offset = itr->offset;
+        while (temp_offset > bytes_per_cluster) {
+            temp_offset = itr->offset - bytes_per_cluster;
+        }
+        //if overflow we only read to end, otherwise read the entire size
+        
+        do {
+            sz = (temp_offset + size > bytes_per_cluster) ? bytes_per_cluster - temp_offset : size;
+            buff = (char *) malloc(sz + 1);
+            int position = get_first_sector(first_cluster) * BPB.BPB_BytsPerSec + sz;
+            fseek(img_file, position, SEEK_SET);
+            fwrite(&buff, 1, sz, img_file);
+            printf("%s", buff);
+            curr_cluster = get_next_cluster(curr_cluster);
+            size -= (bytes_per_cluster - temp_offset);
+            temp_offset = 0;
+        } while(size > 0);
+
+
+    } else {
+        printf("Error: %s is not in the open file table", filename);
+        return -1;
+    }
+    return 0;
+}
 
 /*
 int create_file(char *filename) {
