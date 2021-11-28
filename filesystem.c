@@ -27,7 +27,9 @@ typedef struct
 {
     char name[32];
     char mode[8];
-    struct FileTable* next;
+    unsigned int root_cluster;
+    unsigned int offset;
+    FILETABLE* next;
 } __attribute__((packed)) FILETABLE;
 
 typedef struct {
@@ -56,7 +58,7 @@ unsigned char ATTR_LONG_NAME;
 
 
 char* UserInput[5]; //Longest Command is 4 long, so this will give us just enough space for 4 args and End line
-struct FileTable* root = NULL;
+FILETABLE* root = NULL;
  
 //Shell Commands
 void RunProgram(void);
@@ -71,6 +73,7 @@ int file_size(char* filename);
 void cd(char *dirname);
 int open_file(char* filename, char* mode);
 int close_file(char* filename);
+void lseek(char * filename, int offset);
 // int create_file(char *filename);
 // int create_directory(char *dirname);
 
@@ -79,10 +82,10 @@ int get_first_sector(int cluster_num);
 int get_next_cluster(int curr_cluster);
 int is_last_cluster(int cluster);
 
-//FileTable Management
+//FILETABLE Management
 void FTAdd(const char* fileName, const char* mode);
 void FTRemove(const char* fileName;
-bool FTIsOpen(const char* fileName);
+int FTIsOpen(const char* fileName);
 void FTCleanup();
 
 //Helper functions
@@ -457,6 +460,8 @@ int open_file(char* filename, char* mode) {
 
     else
     {
+    //SET ROOT CLUSTER FOR FILENAME
+
     //Get Directory Contents
 
     //Loop thru Directory Contents
@@ -488,15 +493,16 @@ void FTAdd(const char* fileName, const char* mode) {
         printf("ERROR: File already open.\n");
     }
     else {
-        struct FileTable* tmp = calloc(1, sizeof(struct FileTable));
+        FILETABLE* tmp = calloc(1, sizeof(FILETABLE));
         strcpy(tmp->name, fileName);
         strcpy(tmp->mode, mode);
+        tmp->offset = 0;
         tmp->next = NULL;
         if (root == NULL) {
             root = tmp;
         }
         else {
-            struct FileTable* itr = root;
+            FILETABLE* itr = root;
             while (itr->next != NULL) {
                 itr = itr->next;
             }
@@ -506,8 +512,8 @@ void FTAdd(const char* fileName, const char* mode) {
 }
 
 void FTRemove(const char* fileName) {
-    struct FileTable* itr1;
-    struct FileTable* itr2 = NULL;
+    FILETABLE* itr1;
+    FILETABLE* itr2 = NULL;
     for (itr1 = root; itr1 != NULL; itr2 = itr1, itr1 = itr1->next) {
         if (strcmp(itr1->name, fileName) == 0) {
             if (itr2 == NULL) {
@@ -522,19 +528,19 @@ void FTRemove(const char* fileName) {
     }
 }
 
-bool FTIsOpen(const char* fileName) {
-    struct FileTable* itr;
+int FTIsOpen(const char* fileName) {
+    FILETABLE* itr;
     for (itr = root; itr != NULL; itr = itr->next) {
         if (strcmp(itr->name, fileName) == 0) {
-            return true;
+            return 1;
         }
     }
-    return false;
+    return 0;
 }
 
 void FTCleanup() {
-    struct FileTable* itr1 = root;
-    struct FileTable* itr2;
+    FILETABLE* itr1 = root;
+    FILETABLE* itr2;
     while (itr1 != NULL) {
         itr2 = itr1->next;
         free(itr1);
@@ -542,6 +548,11 @@ void FTCleanup() {
     }
     root = NULL;
 }
+
+void lseek(char * filename, int offset) {
+
+}
+
 
 /*
 int create_file(char *filename) {
