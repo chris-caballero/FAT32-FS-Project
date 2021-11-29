@@ -76,6 +76,7 @@ int open_file(char* filename, char* mode);
 int close_file(char* filename);
 void seek_position(char * filename, int offset);
 int read_file(char *filename, int size);
+int write_file(char *filename, int size, char* string);
 // int create_file(char *filename);
 // int create_directory(char *dirname);
 
@@ -135,28 +136,7 @@ void RunProgram(void) {
         GetUserInput();
 
         char *command = UserInput[0];
-
-        // cd("blue");
-        // cd("blue1");
-        // cd("blue2");
-        // cd("blue3");
-        // cd("blue4");
-        // cd("blue5");
-        // cd("blue6");
-        // cd("blue7");
-        // cd("blue8");
-        // cd("blue9");
-        // cd("blue10");
-        // cd("blue11");
-        // cd("blue12");
-        // cd("blue13");
-        // cd("blue14");
-        // cd("blue15");
-        // cd("blue16");
-        // cd("blue17");
-        // cd("blue18");
-        // cd("blue19");
-        // cd("blue20");
+       
 
         if (!strcmp(command, "exit")) {
             //release resources 
@@ -213,7 +193,10 @@ void RunProgram(void) {
             read_file(filename, size);
         }
         else if (!strcmp(command, "write")) {
-
+            char *filename = UserInput[1];
+            int size = atoi(UserInput[2]);
+            char * string = UserInput[3];
+            write_file(filename, size, string);
         }
         else if (!strcmp(command, "rm")) {
 
@@ -680,6 +663,10 @@ int read_file(char *filename, int size) {
     curr_cluster = first_cluster;
 
     if((itr = get_entry_FT(first_cluster)) != NULL) {
+        if(strcmp(itr->mode, "w") == 0) {
+            printf("Error: Attempting to read a write-only file\n");
+            return -1;
+        }
         if(itr->offset + size > file.DIR_FileSize) {
             size = file.DIR_FileSize - itr->offset;
         }
@@ -708,6 +695,70 @@ int read_file(char *filename, int size) {
             position = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec;
         } while(size > 0 && !is_last_cluster(curr_cluster));
 
+
+    } else {
+        printf("Error: %s is not in the open file table", filename);
+        return -1;
+    }
+    return 0;
+}
+
+int write_file(char *filename, int size, char *string) {
+    struct FILETABLE* itr;
+    int temp_offset, sz, curr_cluster;
+    DIRENTRY file = find_filename_cluster(filename);
+
+    int first_cluster = file.DIR_FirstClusterHI * 0x100 + file.DIR_FirstClusterLO;
+    curr_cluster = first_cluster;
+
+    if((itr = get_entry_FT(first_cluster)) != NULL) {
+        if(strcmp(itr->mode, "r") == 0) {
+            printf("Error: Attempting to write a read-only file\n");
+            return -1;
+        }
+        //file size to be increased, otherwise remains the same
+        if(itr->offset + size > file.DIR_FileSize) {
+            //allocate extra clusters
+            int num_curr_clusters = file.DIR_FileSize / bytes_per_cluster;
+            int num_final_clusters = (itr->offset + size) / bytes_per_cluster;
+            if(file.DIR_FileSize % bytes_per_cluster > 0) {
+                num_curr_clusters += 1;
+            }
+            if((itr->offset + size) % bytes_per_cluster > 0) {
+                num_final_clusters += 1;
+            }
+            int extra_clusters = num_final_clusters - num_curr_clusters;
+            //allocate necessary clusters
+            //for i in range(0, extra_clusters):    
+            //  allocate_cluster();
+        }
+        //write data in clusters
+        temp_offset = itr->offset;
+        while (temp_offset > bytes_per_cluster) {
+            temp_offset -= bytes_per_cluster;
+        }
+        //if overflow we only read to end, otherwise read the entire size
+        int position = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec + itr->offset;
+        //printf("position %d", position);
+        int base = 0;
+        do {
+            sz = (temp_offset + size > bytes_per_cluster) ? bytes_per_cluster - temp_offset : size;
+            char buff[sz];
+            for(int i = base; i < base + sz; i++) {
+                buff[i] = string[i];
+            }
+
+            fseek(img_file, position, SEEK_SET);
+            fwrite(buff, 1, sizeof(buff), img_file);
+
+            base += sz;
+
+            size -= (bytes_per_cluster - temp_offset);
+            temp_offset = 0;
+            curr_cluster = get_next_cluster(curr_cluster);
+
+            position = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec;
+        } while(size > 0 && !is_last_cluster(curr_cluster));
 
     } else {
         printf("Error: %s is not in the open file table", filename);
