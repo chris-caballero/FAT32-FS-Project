@@ -252,7 +252,8 @@ void GetUserInput(void)
         {
             if (temp != '\"')
             {
-                printf("Error: Expected quotes around last argument");
+                printf("Error: Expected quotes around last argument\n");
+                return;
             }
             
             temp = fgetc(stdin);
@@ -745,7 +746,7 @@ int read_file(char *filename, int size) {
     return 0;
 }
 
-int write_file(char *filename, int size, char *string) {
+int write_file(char *filename, int size, char *string) { 
     struct FILETABLE* itr;
     int temp_offset, sz, curr_cluster;
     DIRENTRY file = find_filename_cluster(filename);
@@ -770,12 +771,8 @@ int write_file(char *filename, int size, char *string) {
                 num_final_clusters += 1;
             }
             int extra_clusters = num_final_clusters - num_curr_clusters;
-            //allocate necessary clusters
-            //for i in range(0, extra_clusters):    
-            //  allocate_cluster();
-            int last_cluster = find_last_cluster(curr_cluster);
-            allocate_clusters(5, last_cluster);
-            last_cluster = find_last_cluster(curr_cluster);
+            allocate_clusters(extra_clusters, find_last_cluster(curr_cluster));
+            int last_cluster = find_last_cluster(last_cluster);
             
             file.DIR_FileSize = itr->offset + size;
             int temp = find_filename_cluster_offset(filename);
