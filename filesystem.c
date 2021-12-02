@@ -77,6 +77,8 @@ int close_file(char* filename);
 void seek_position(char * filename, int offset);
 int read_file(char *filename, int size);
 int write_file(char *filename, int size, char* string);
+void cp(char* source, char* dest);
+void mv(char* source, char* dest);
 // int create_file(char *filename);
 // int create_directory(char *dirname);
 
@@ -182,6 +184,9 @@ void RunProgram(void) {
             make_dir(dirname);
         }
         else if (!strcmp(command, "mv")) {
+            char* source = UserInput[1];
+            char* dest = UserInput[2];
+            mv(source, dest);
 
         }
         else if (!strcmp(command, "open")) {
@@ -214,6 +219,9 @@ void RunProgram(void) {
             remove_file(filename);
         }
         else if (!strcmp(command, "cp")) {
+            char* source = UserInput[1];
+            char* dest = UserInput[2];
+            cp(source, dest);
 
         }
         else if (!strcmp(command, "rmdir")) {
@@ -838,6 +846,39 @@ int write_file(char *filename, int size, char *string) {
         return -1;
     }
     return 0;
+}
+
+void cp(char* source, char* dest)
+{
+    //Get current working Directory
+
+    //Check if file exists
+
+    //if dest exists, error out
+   
+    //if file exists, copy it to the dest
+
+}
+
+void mv(char* source, char* dest)
+{
+    if (strcmp(source, "..") == 0 || (strcmp(source, ".") == 0))
+    {
+        printf("Error: .. and . are not valid sources!");
+        return;
+    }
+
+    //if source is directory and dest is a file, error out
+     
+    //if dest exists and source exists, error out on name basis
+     
+    //if dest IS a directory, source moved to be inside dest...
+   
+    //if dest does not exists, source is renamed to dest.
+
+    
+
+    
 }
 
 int isFile(int first_cluster) {
