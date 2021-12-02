@@ -962,17 +962,112 @@ int write_file(char *filename, int size, char *string) {
     return 0;
 }
 
+char get_file_content(char* filename, int size) {
+    struct FILETABLE* itr;
+    int temp_offset, sz, curr_cluster;
+    char* data = (char*)malloc(sizeof(char));
+
+    char* original = (char*)malloc(sizeof(char) * strlen(filename));
+    strcpy(original, filename);
+
+    DIRENTRY file = find_filename_entry(filename);
+    if (file.DIR_Name[0] == 0x0) {
+        return data;
+    }
+
+    int first_cluster = file.DIR_FirstClusterHI * 0x100 + file.DIR_FirstClusterLO;
+    curr_cluster = first_cluster;
+
+    if ((itr = get_entry_FT(first_cluster)) != NULL) {
+        if (strcmp(itr->mode, "w") == 0) {
+            printf("Error: Attempting to read a write-only file\n");
+            return data;
+        }
+        if (itr->offset + size > file.DIR_FileSize) {
+            size = file.DIR_FileSize - itr->offset;
+        }
+
+        temp_offset = itr->offset;
+        while (temp_offset > bytes_per_cluster) {
+            temp_offset -= bytes_per_cluster;
+        }
+        //if overflow we only read to end, otherwise read the entire size
+        int position = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec + itr->offset;
+        do {
+            sz = (temp_offset + size > bytes_per_cluster) ? bytes_per_cluster - temp_offset : size;
+            char buff[sz];
+
+            fseek(img_file, position, SEEK_SET);
+            fread(&buff, sizeof(buff), 1, img_file);
+
+            buff[sz] = '\0';
+            //printf("%s", buff);
+
+            size -= (bytes_per_cluster - temp_offset);
+            temp_offset = 0;
+            curr_cluster = get_next_cluster(curr_cluster);
+
+            position = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec;
+            
+            for (int i = 0; i < sz; i++)
+            {
+                DynStrPushBack(data, buff[i]);
+            }
+        } while (size > 0 && !is_last_cluster(curr_cluster));
+    }
+    else {
+        printf("Error: %s is not open\n", original);
+        return data;
+    }
+    printf("\n") //Why the heck is it able to print new line here but seg faults when I try to do a test message here?
+    return data;
+}
+
 void cp(char* source, char* dest)
 {
-    //Get current working Directory
+    int first_cluster_dest, first_cluster_source;
+    DIRENTRY dest_entry, source_entry;
 
-    //Check if file exists
+    if (open_file(source, "r") == 0)
+    {
+        
+        int size = file_size(source); //get Size
+        char data = get_file_content(source,size); //Get File Content *SEG FAULTS*
+        printf("%s", data);
+        if ((first_cluster_dest = find_dirname_cluster(dest)) != -1) {
+            //get source entry
+            source_entry = find_entry(source);
 
-    //if dest exists, error out
-   
-    //if file exists, copy it to the dest
+            if (source_entry.DIR_Attributes & ATTR_DIRECTORY) {
+                //is directory, we don't copy directories
+                printf("Error: Can not copy directories, only files");
+                return;
+            }
 
-}
+            else {
+                //create file
+                char* name = dest;
+                int temp = ENV.current_cluster;
+                cd(dest); // Change to Dest if possible 
+                
+                if (temp != ENV.current_cluster)
+                {
+                    //We move to a dir
+                    name = source;
+                }
+
+                create_file(name); //Create copy
+                open_file(name, 'w'); //Open copy
+                write_file(name, size, data); //Write Data
+                close_file(name); // Close copy
+
+                ENV.current_cluster = temp; //Reset to start of operation
+
+                
+            }
+        }
+    }
+}  
 
 void mv(char* source, char* dest)
 {
