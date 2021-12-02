@@ -776,6 +776,63 @@ int read_file(char *filename, int size) {
     return 0;
 }
 
+//This is horrible coding, but oh well Modified Read_file cause I want the buff out of it.
+char get_file_content(char* filename, int size) {
+    struct FILETABLE* itr;
+    int temp_offset, sz, curr_cluster;
+    char* permBuff;
+
+    char* original = (char*)malloc(sizeof(char) * strlen(filename));
+    strcpy(original, filename);
+
+    DIRENTRY file = find_filename_cluster(filename);
+    if (file.DIR_Name[0] == 0x0) {
+        return -1;
+    }
+
+    int first_cluster = file.DIR_FirstClusterHI * 0x100 + file.DIR_FirstClusterLO;
+    curr_cluster = first_cluster;
+
+    if ((itr = get_entry_FT(first_cluster)) != NULL) {
+        if (strcmp(itr->mode, "w") == 0) {
+            printf("Error: Attempting to read a write-only file\n");
+            return -1;
+        }
+        if (itr->offset + size > file.DIR_FileSize) {
+            size = file.DIR_FileSize - itr->offset;
+        }
+
+        temp_offset = itr->offset;
+        while (temp_offset > bytes_per_cluster) {
+            temp_offset -= bytes_per_cluster;
+        }
+        //if overflow we only read to end, otherwise read the entire size
+
+
+
+        int position = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec + itr->offset;
+        do {
+            sz = (temp_offset + size > bytes_per_cluster) ? bytes_per_cluster - temp_offset : size;
+            char buff[sz];
+
+            fseek(img_file, position, SEEK_SET);
+            fread(&buff, sizeof(buff), 1, img_file);
+
+            buff[sz] = '\0';
+            printf("%s", buff);
+
+            size -= (bytes_per_cluster - temp_offset);
+            temp_offset = 0;
+            curr_cluster = get_next_cluster(curr_cluster);
+
+            position = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec;
+            permBuff = buff;
+        } while (size > 0 && !is_last_cluster(curr_cluster));
+
+        return *permBuff;
+    }
+}
+
 int write_file(char *filename, int size, char *string) { 
     struct FILETABLE* itr;
     int temp_offset, sz, curr_cluster;
@@ -850,14 +907,31 @@ int write_file(char *filename, int size, char *string) {
 
 void cp(char* source, char* dest)
 {
-    //Get current working Directory
+   //Check if file exists
+    close_file(source); //Deals with errors
+    if (open_file(source, "r") == 0)
+    {
+        //If file exists get copy of the string it contains and use the write_file to put it into dest
+        int size = file_size(source);
+        char *string = get_file_content(source, size); //Make function that gets
 
-    //Check if file exists
+           //check if dest is directory
+        int first_cluster = 0; //How do I get this?
+        if (isFile(first_cluster) == 0)
+        {
 
-    //if dest exists, error out
-   
-    //if file exists, copy it to the dest
+        }
 
+        else //if not directory, create copy with dest name
+        {
+            create_file(dest);
+            open_file(dest, "wr");
+            write_file(dest, size, string);
+        }
+
+           
+    }
+    
 }
 
 void mv(char* source, char* dest)
@@ -875,10 +949,6 @@ void mv(char* source, char* dest)
     //if dest IS a directory, source moved to be inside dest...
    
     //if dest does not exists, source is renamed to dest.
-
-    
-
-    
 }
 
 int isFile(int first_cluster) {
