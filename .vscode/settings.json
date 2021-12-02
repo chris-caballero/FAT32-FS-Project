@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "*.python": "python",
+        "commands.h": "c",
+        "ctype.h": "c",
+        "string.h": "c",
+        "util.h": "c",
+        "typeinfo": "c"
+    }
+}
