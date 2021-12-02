@@ -50,7 +50,7 @@ Tar File Contents:
 How to use:
   make: Compiles the program as "project3"
   make start: Runs the produced "project3" executable using the "fat32.img"
-  project3 <imageFile>: Executes the executable using imageFile as the target for the program.
+  ./project3 <imageFile>: Executes the executable using imageFile as the target for the program.
  ```
  
  ```
