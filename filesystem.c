@@ -962,7 +962,7 @@ int write_file(char *filename, int size, char *string) {
     return 0;
 }
 
-char get_file_content(char* filename, int size) {
+char* get_file_content(char* filename, int size) {
     struct FILETABLE* itr;
     int temp_offset, sz, curr_cluster;
     char* data = (char*)malloc(sizeof(char));
@@ -1019,20 +1019,20 @@ char get_file_content(char* filename, int size) {
         printf("Error: %s is not open\n", original);
         return data;
     }
-    printf("\n") //Why the heck is it able to print new line here but seg faults when I try to do a test message here?
+    printf("\n"); //Why the heck is it able to print new line here but seg faults when I try to do a test message here?
     return data;
 }
 
 void cp(char* source, char* dest)
 {
     int first_cluster_dest, first_cluster_source;
-    DIRENTRY dest_entry, source_entry;
+    DIRENTRY source_entry;
 
     if (open_file(source, "r") == 0)
     {
         
         int size = file_size(source); //get Size
-        char data = get_file_content(source,size); //Get File Content *SEG FAULTS*
+        char *data = get_file_content(source,size); //Get File Content *SEG FAULTS*
         printf("%s", data);
         if ((first_cluster_dest = find_dirname_cluster(dest)) != -1) {
             //get source entry
