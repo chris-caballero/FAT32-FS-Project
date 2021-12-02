@@ -690,7 +690,6 @@ int open_file(char* filename, char* mode) {
     int cluster;
     DIRENTRY file = find_filename_entry(filename);
     cluster = file.DIR_FirstClusterHI * 0x100 + file.DIR_FirstClusterLO;
-    printf("%d", cluster);
    //Mode Check
     if(file.DIR_Name[0] == 0x0) {
         printf("ERROR: File not Found\n");
