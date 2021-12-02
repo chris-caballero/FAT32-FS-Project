@@ -82,6 +82,9 @@ void mv(char* source, char* dest);
 // int create_file(char *filename);
 // int create_directory(char *dirname);
 
+
+DIRENTRY find_entry(char *name);
+
 //Cluster Management
 int get_first_sector(int cluster_num);
 int get_next_cluster(int curr_cluster);
@@ -96,7 +99,7 @@ struct FILETABLE* get_entry_FT(int cluster_num);
 
 //Helper functions
 int find_dirname_cluster(char *dirname);
-DIRENTRY find_filename_cluster(char *filename) ;
+DIRENTRY find_filename_entry(char *filename) ;
 DIRENTRY new_file(char *filename);
 DIRENTRY new_directory(char *dirname);
 int find_last_cluster(int curr_cluster);
@@ -337,9 +340,13 @@ void ls(char *dirname) {
     int i, offset;
     int curr_cluster;
 
+    char *original = (char *) malloc(sizeof(char)*strlen(dirname));
+    strcpy(original, dirname);
+
     if(strcmp(dirname, "") == 0) {
         curr_cluster = ENV.current_cluster;
     } else if((curr_cluster = find_dirname_cluster(dirname)) == -1) {
+        printf("Error: directory %s not found\n", original);
         return;
     }
 
@@ -369,16 +376,17 @@ void ls(char *dirname) {
 
 void cd(char *dirname) {
     int new_cluster;
+
+    char *original = (char *) malloc(sizeof(char)*strlen(dirname));
+    strcpy(original, dirname);
+
     if((new_cluster = find_dirname_cluster(dirname)) == -1) {
+        printf("Error: directory %s not found\n", original);
         return;
     } else if(new_cluster == 0) {
         new_cluster = BPB.BPB_RootClus;
     }
     ENV.current_cluster = new_cluster;
-    
-    int offset = get_first_sector(ENV.current_cluster) * BPB.BPB_BytsPerSec;
-    fseek(img_file, offset, SEEK_SET);
-    fread(&ENV.current_dir, sizeof(ENV.current_dir), 1, img_file);
 }
 
 DIRENTRY new_file(char *filename) {
@@ -439,12 +447,11 @@ int find_filename_cluster_offset(char *filename) {
         curr_cluster = get_next_cluster(curr_cluster);
     }
     printf("Error: file %s not found\n", original);
-    curr_dir.DIR_Name[0] = 0x0;
 
     return -1;
 }
 
-DIRENTRY find_filename_cluster(char *filename) {
+DIRENTRY find_filename_entry(char *filename) {
     DIRENTRY curr_dir;
     int i, j, offset;
     int curr_cluster = ENV.current_cluster;
@@ -481,13 +488,83 @@ DIRENTRY find_filename_cluster(char *filename) {
     return curr_dir;
 }
 
-int find_dirname_cluster(char * dirname) {
+DIRENTRY find_dirname_entry(char * dirname) {
     DIRENTRY curr_dir;
     int i, j, offset;
     int curr_cluster = ENV.current_cluster;
 
     char *original = (char *) malloc(sizeof(char)*strlen(dirname));
     strcpy(original, dirname);
+
+    format(dirname);
+
+    while(!is_last_cluster(curr_cluster)) {
+        for(i = 0; i*sizeof(curr_dir) < BPB.BPB_BytsPerSec; i++) {
+            offset = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec + i*sizeof(curr_dir);
+            fseek(img_file, offset, SEEK_SET);
+            fread(&curr_dir, sizeof(curr_dir), 1, img_file);
+
+            if((curr_dir.DIR_Attributes & ATTR_DIRECTORY) && curr_dir.DIR_Name[0] != '\0' && !(curr_dir.DIR_Attributes & ATTR_LONG_NAME)) {
+                int cont = 0;
+                for(int j = 0; j < 11; j++) {
+                    if(curr_dir.DIR_Name[j] != dirname[j]) {
+                        cont = 1;
+                        break;
+                    }
+                }
+                if(!cont) {
+                    return curr_dir;
+                }
+            }
+        }
+        curr_cluster = get_next_cluster(curr_cluster);
+    }
+    printf("Error: directory %s not found\n", original);
+    curr_dir.DIR_Name[0] = 0x0;
+
+    return curr_dir;
+}
+
+int find_dirname_cluster_offset(char *dirname) {
+    DIRENTRY curr_dir;
+    int i, j, offset;
+    int curr_cluster = ENV.current_cluster;
+
+    char *original = (char *) malloc(sizeof(char)*strlen(dirname));
+    strcpy(original, dirname);
+
+    format(dirname);
+
+    while(!is_last_cluster(curr_cluster)) {
+        for(i = 0; i*sizeof(curr_dir) < BPB.BPB_BytsPerSec; i++) {
+            offset = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec + i*sizeof(curr_dir);
+            fseek(img_file, offset, SEEK_SET);
+            fread(&curr_dir, sizeof(curr_dir), 1, img_file);
+
+            if(!(curr_dir.DIR_Attributes & ATTR_DIRECTORY) && curr_dir.DIR_Name[0] != '\0' && !(curr_dir.DIR_Attributes & ATTR_LONG_NAME)) {
+                int cont = 0;
+                for(int j = 0; j < 11; j++) {
+                    if(curr_dir.DIR_Name[j] != dirname[j]) {
+                        cont = 1;
+                        break;
+                    }
+                }
+                if(!cont) {
+                    return offset;
+                }
+            }
+        }
+        curr_cluster = get_next_cluster(curr_cluster);
+    }
+    printf("Error: file %s not found\n", original);
+
+    return -1;
+}
+
+int find_dirname_cluster(char * dirname) {
+    DIRENTRY curr_dir;
+    int i, j, offset;
+    int curr_cluster = ENV.current_cluster;
 
     format(dirname);
 
@@ -512,9 +589,46 @@ int find_dirname_cluster(char * dirname) {
         }
         curr_cluster = get_next_cluster(curr_cluster);
     }
-    printf("Error: directory %s not found\n", original);
+    //printf("Error: directory %s not found\n", original);
     return -1;
 }
+
+DIRENTRY find_entry(char *name) {
+    DIRENTRY curr_dir;
+    int i, j, offset;
+    int curr_cluster = ENV.current_cluster;
+
+    char *original = (char *) malloc(sizeof(char)*strlen(name));
+    strcpy(original, name);
+
+    format(name);
+
+    while(!is_last_cluster(curr_cluster)) {
+        for(i = 0; i*sizeof(curr_dir) < BPB.BPB_BytsPerSec; i++) {
+            offset = get_first_sector(curr_cluster) * BPB.BPB_BytsPerSec + i*sizeof(curr_dir);
+            fseek(img_file, offset, SEEK_SET);
+            fread(&curr_dir, sizeof(curr_dir), 1, img_file);
+            
+            if(curr_dir.DIR_Name[0] != '\0' && !(curr_dir.DIR_Attributes & ATTR_LONG_NAME)) {
+                int cont = 0;
+                for(int j = 0; j < 11; j++) {
+                    if(curr_dir.DIR_Name[j] != name[j]) {
+                        cont = 1;
+                        break;
+                    }
+                }
+                if(!cont) {
+                    return curr_dir;
+                }
+            }
+        }
+        curr_cluster = get_next_cluster(curr_cluster);
+    }
+    curr_dir.DIR_Name[0] = 0x0;
+
+    return curr_dir;  
+}
+
 
 int file_size(char *filename) {
     DIRENTRY curr_dir;
@@ -569,7 +683,7 @@ void format(char * name) {
 
 int open_file(char* filename, char* mode) {
     int cluster;
-    DIRENTRY file = find_filename_cluster(filename);
+    DIRENTRY file = find_filename_entry(filename);
     cluster = file.DIR_FirstClusterHI * 0x100 + file.DIR_FirstClusterLO;
    //Mode Check
     if(file.DIR_Name[0] == 0x0) {
@@ -613,7 +727,7 @@ int isValidMode(char * mode) {
 
 int close_file(char* filename)
 {
-    DIRENTRY file = find_filename_cluster(filename);
+    DIRENTRY file = find_filename_entry(filename);
     int cluster = file.DIR_FirstClusterHI * 0x100 + file.DIR_FirstClusterLO;
     if (get_entry_FT(cluster) != NULL) 
     {
@@ -704,7 +818,7 @@ void seek_position(char * filename, int offset) {
     char *original = (char *) malloc(sizeof(char)*strlen(filename));
     strcpy(original, filename);
 
-    DIRENTRY file = find_filename_cluster(filename);
+    DIRENTRY file = find_filename_entry(filename);
     if(file.DIR_Name[0] == 0x0) {
         return;
     }
@@ -729,7 +843,7 @@ int read_file(char *filename, int size) {
     char *original = (char *) malloc(sizeof(char)*strlen(filename));
     strcpy(original, filename);
 
-    DIRENTRY file = find_filename_cluster(filename);
+    DIRENTRY file = find_filename_entry(filename);
     if(file.DIR_Name[0] == 0x0) {
         return -1;
     }
@@ -783,7 +897,7 @@ int write_file(char *filename, int size, char *string) {
     char *original = (char *) malloc(sizeof(char)*strlen(filename));
     strcpy(original, filename);
 
-    DIRENTRY file = find_filename_cluster(filename);
+    DIRENTRY file = find_filename_entry(filename);
     if(file.DIR_Name[0] == 0x0) {
         return -1;
     }
@@ -868,17 +982,123 @@ void mv(char* source, char* dest)
         return;
     }
 
+
+    int first_cluster_dest, first_cluster_source;
+    DIRENTRY dest_entry, source_entry;
+    if((first_cluster_dest = find_dirname_cluster(dest)) != -1) {
+        //move the file
+        source_entry = find_entry(source);
+
+        dest_entry = find_dirname_entry(dest);
+
+        if(source_entry.DIR_Attributes & ATTR_DIRECTORY) {
+            //is directory, make directory
+            int temp = ENV.current_cluster;
+            cd(dest);
+
+            make_dir(source);
+
+            int new_pos = find_dirname_cluster_offset(source);
+            fseek(img_file, new_pos, SEEK_SET);
+            fwrite(&source_entry, sizeof(source_entry), 1, img_file);
+
+            ENV.current_cluster = temp;
+            
+            int source_offset = find_dirname_cluster_offset(source);
+            if(is_last_cluster(first_cluster_source)) {
+                int empty = 0x0;
+                fseek(img_file, source_offset, SEEK_SET);
+                fwrite(&empty, 1, 1, img_file);
+            } else {
+                int empty = 0xE5;
+                fseek(img_file, source_offset, SEEK_SET);
+                fwrite(&empty, 1, 1, img_file);
+            }
+
+        } else {
+            //create file
+            int temp = ENV.current_cluster;
+            cd(dest);
+
+            create_file(source);
+
+            int new_pos = find_filename_cluster_offset(source);
+            fseek(img_file, new_pos, SEEK_SET);
+            fwrite(&source_entry, sizeof(source_entry), 1, img_file);
+
+            ENV.current_cluster = temp;
+
+            int source_offset = find_filename_cluster_offset(source);
+            if(is_last_cluster(first_cluster_source)) {
+                int empty = 0x0;
+                fseek(img_file, source_offset, SEEK_SET);
+                fwrite(&empty, 1, 1, img_file);
+            } else {
+                int empty = 0xE5;
+                fseek(img_file, source_offset, SEEK_SET);
+                fwrite(&empty, 1, 1, img_file);
+            }
+        }
+
+        first_cluster_source = source_entry.DIR_FirstClusterHI*0x100 + source_entry.DIR_FirstClusterLO;
+
+
+
+        if(source_entry.DIR_Attributes & ATTR_DIRECTORY) {
+            int temp = ENV.current_cluster;
+            ENV.current_cluster = first_cluster_source;
+            DIRENTRY parent = find_dirname_entry("..");
+            ENV.current_cluster = temp;
+
+
+            parent.DIR_FirstClusterHI = first_cluster_dest / 0x100;
+            parent.DIR_FirstClusterLO = first_cluster_dest % 0x100;
+            
+            int offset = find_dirname_cluster_offset(source);
+            fseek(img_file, offset, SEEK_SET);
+            fwrite(&parent, sizeof(parent), 1, img_file);
+        }
+
+    } else {
+        //change file/directory name
+        format(dest);
+        source_entry = find_entry(source);
+        for(int i = 0; i < strlen(dest); i++) {
+            source_entry.DIR_Name[i] = toupper(dest[i]);
+        } 
+        for(int i = strlen(dest); i < 11; i++) {
+            source_entry.DIR_Name[i] = ' ';
+        }
+
+        int offset;
+        if(source_entry.DIR_Attributes & ATTR_DIRECTORY) {
+            offset = find_dirname_cluster_offset(source);
+            dest_entry = find_entry(dest);
+            if(dest_entry.DIR_Name[0] != 0x0 && !(dest_entry.DIR_Attributes & ATTR_DIRECTORY)) {
+                printf("Cannot move directory: invalid destination argument\n");
+                return;
+            }
+        } else {
+            dest_entry = find_entry(dest);
+            if(dest_entry.DIR_Name[0] != 0x0 && !(dest_entry.DIR_Attributes & ATTR_DIRECTORY)) {
+                printf("The name is already being used by another file\n");
+                return;
+            }
+            offset = find_filename_cluster_offset(source);
+        }
+        fseek(img_file, offset, SEEK_SET);
+        fwrite(&source_entry, sizeof(source), 1, img_file);
+        
+        
+    }
+
     //if source is directory and dest is a file, error out
      
     //if dest exists and source exists, error out on name basis
      
     //if dest IS a directory, source moved to be inside dest...
    
-    //if dest does not exists, source is renamed to dest.
-
-    
-
-    
+    //if dest does not exists, source is renamed to dest.  
 }
 
 int isFile(int first_cluster) {
@@ -1064,7 +1284,7 @@ void create_initial_entries(DIRENTRY curr_dir) {
 }
 
 void remove_file(char *filename) {
-    DIRENTRY file = find_filename_cluster(filename);
+    DIRENTRY file = find_filename_entry(filename);
     int empty1 = 0x0, empty2 = 0xE5;
 
     if(file.DIR_Name[0] == empty1) {
