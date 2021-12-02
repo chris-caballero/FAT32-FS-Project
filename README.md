@@ -41,9 +41,9 @@ Divison of Labour:
 
 ```
 How to use:
-  make: Compiles the program
-  make start: Runs the produced "Project3" executable using the "fat32.img"
-  Project3 <imageFile>: Executes the executable using imageFile as the target for the program.
+  make: Compiles the program as "project3"
+  make start: Runs the produced "project3" executable using the "fat32.img"
+  project3 <imageFile>: Executes the executable using imageFile as the target for the program.
  ```
  
  ```
