@@ -907,31 +907,21 @@ int write_file(char *filename, int size, char *string) {
 
 void cp(char* source, char* dest)
 {
-   //Check if file exists
-    close_file(source); //Deals with errors
+    close_file(source); //This will stop cp from failing if file already open
     if (open_file(source, "r") == 0)
     {
-        //If file exists get copy of the string it contains and use the write_file to put it into dest
+        // If dest = directory, need to cd to it and then do the following
+
+        //Make sure dest exists
+          //memcpy from source to dest using size of bits
         int size = file_size(source);
-        char *string = get_file_content(source, size); //Make function that gets
-
-           //check if dest is directory
-        int first_cluster = 0; //How do I get this?
-        if (isFile(first_cluster) == 0)
-        {
-
-        }
-
-        else //if not directory, create copy with dest name
+        if (open_file(dest, "r") != 0)
         {
             create_file(dest);
-            open_file(dest, "wr");
-            write_file(dest, size, string);
+            open_file(dest, "w");
         }
-
-           
+        memcpy(dest, source, size);
     }
-    
 }
 
 void mv(char* source, char* dest)
