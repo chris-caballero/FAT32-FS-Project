@@ -37,8 +37,6 @@ typedef struct {
     DIRENTRY current_dir;
 } __attribute__((packed)) ENV_Info;
 
-
-
 FILE *  img_file;
 BPB_Info BPB;
 ENV_Info ENV;
@@ -79,9 +77,6 @@ int read_file(char *filename, int size);
 int write_file(char *filename, int size, char* string);
 void cp(char* source, char* dest);
 void mv(char* source, char* dest);
-// int create_file(char *filename);
-// int create_directory(char *dirname);
-
 
 DIRENTRY find_entry(char *name);
 
@@ -115,7 +110,6 @@ void allocate_clusters(int num_clusters, int last_cluster);
 int find_empty_cluster(void);
 
 void create_initial_entries(DIRENTRY curr_dir);
-
 
 int create_file(char *filename);
 int make_dir(char * dirname);
@@ -225,7 +219,7 @@ void RunProgram(void) {
             char *filename = UserInput[1];
             remove_file(filename);
         }
-        else if (!strcmp(command, "cp")) {
+        else if (!strcmp(command, "cp")) { // Unimplemented
             char* source = UserInput[1];
             char* dest = UserInput[2];
             cp(source, dest);
