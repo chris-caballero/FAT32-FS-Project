@@ -1,4 +1,4 @@
-COP4610 Project 3: FAT32 System
+#### COP4610 Project 3: FAT32 System
 
 ```
 Group Members:
