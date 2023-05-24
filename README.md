@@ -1,10 +1,9 @@
-#### COP4610 Project 3: FAT32 System
+## FAT32 System
 
 ```
 Group Members:
   - Chris Caballero
   - Ryan Beck
-  - Tivvon Cruickshank
 ```
 
 ```
@@ -40,24 +39,12 @@ Divison of Labour:
     -No Show.
 ```
 
-```
-Tar File Contents:
-(insert contents here once tar file created)
-(short description of the files)
-```
 
 ```
 How to use:
   make: Compiles the program as "project3"
   make start: Runs the produced "project3" executable using the "fat32.img"
   ./project3 <imageFile>: Executes the executable using imageFile as the target for the program.
- ```
- 
- ```
- Considerations:
-  Our third group member was a no-show.
-  Both of us (Ryan and I) have had to deal with family emergencies while doing this project.
- 
  ```
  
  ```
