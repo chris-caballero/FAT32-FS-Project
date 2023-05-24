@@ -34,9 +34,6 @@ Divison of Labour:
     - Run Program
     - MakeFile 
     - Documentation
-
-  - Tivvon Cruickshank
-    -No Show.
 ```
 
 
@@ -50,14 +47,15 @@ How to use:
  ```
  Known Bugs / Issues:
   - Write may write to open space in the current directory (visibile to ls)
-    - This is likely due to errors in file creation and removal
-  - Removing a file may remove unnecessarily (seems to be an edge case that only happened once)
+    - This is likely due to oversights in file creation and removal methods
+  - Removing a file may remove unnecessary contents (seems to be an edge case that only happened once)
   - The open file table may incorrectly say a file is open if it occupies a cluster that was deallocated 
-    but originally refered to an open file
-  - The size of a file is written to be exactly whatever the overflow value is upon write
-    - In other words: If your file is 10B, and you write 50B with string "string", the file will be 50B with contents "string"
-    - Seems like it should be more precise than this.
-  - Deleting files does not properly check if it is the last entry or not (generally sets the first byte to 0xE5)
+    but originally refered to an open file.
+    - Cluster deallocation does not currently modify the open file table.
+  - The size of a file is written whatever the overflow value is upon write
+    - In other words: If your file is 10B, and you write 50B along with a string <str>, the file will be 50B with contents <str>
+    - Likely an easy fix, but left for future work.
+  - Does not currently handle the edge case of deleting the last entry  (generally sets the first byte to 0xE5)
 ```
 
   
